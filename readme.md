@@ -51,18 +51,15 @@ From the REPL, encrypt a message:
 Welcome to Apex Cipher!
 Max text: 4096 bytes | Key: up to 64 bytes
 Cipher: 10-round SPN + CBC + HMAC | Format: Base64
-Key: 1a79d238594956db5d009188b145e5149e5df869d1085be3492cfa78161b25ad (32 bytes)
+Key: f48830ae90353c8e60f4005a478e0f0d56a3dd93dc700b7504211f213a0b55be (32 bytes)
 
 1. Encrypt
 2. Decrypt
 3. Set key
-4. Exit
 > 1
-Enter text (empty line to finish):
-secret
-
-Encrypted (68 bytes):
-p/pDVsNwuC4WKwBrGGT+zQYAAADqUiomrUPkf+e5HzlpU9Y/XyvN+v3Nr/h8Kwr9yIfT8aZPuZ5uRdmAYdNMnheyKwk=
+Enter text: account password: pass911 
+Encrypted (84 bytes):
+NsZgSalqTnCuRZF3ZkDlLhkAAACYO9qcVeuWFwc+7UlxHYzPW6qPTAFzZKKs6tOKW8NpxebRplPKt4hTJc4ZzGokO4LOUxJNHSCp6Ww4yfpTfSJd
 ```
 
 ## Security Features

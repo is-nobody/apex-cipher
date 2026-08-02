@@ -20,44 +20,34 @@ void utils_print_safe(const uint8_t *data, size_t len) {
 
 size_t utils_read_base64_line(uint8_t *buffer, size_t max_len) {
     char line[8192];
-    size_t total = 0;
-    int started = 0;
     
-    printf("Paste base64 (empty line to finish):\n");
+    printf("Enter encoded: ");
     
-    while (fgets(line, sizeof(line), stdin)) {
-        int empty = 1;
-        for (char *p = line; *p && *p != '\n'; p++) {
-            if (!isspace((unsigned char)*p)) {
-                empty = 0;
-                break;
-            }
-        }
-        
-        if (empty && started) break;
-        if (empty && !started) continue;
-        
-        started = 1;
-        
-        char cleaned[8192];
-        size_t clen = 0;
-        for (char *p = line; *p && clen < sizeof(cleaned) - 1; p++) {
-            if (!isspace((unsigned char)*p)) {
-                cleaned[clen++] = *p;
-            }
-        }
-        cleaned[clen] = '\0';
-        
-        if (clen == 0) break;
-        
-        size_t decoded_len;
-        if (base64_decode(cleaned, buffer + total, &decoded_len)) {
-            total += decoded_len;
-            if (total >= max_len) break;
-        }
+    if (!fgets(line, sizeof(line), stdin)) {
+        return 0;
     }
     
-    return total;
+    size_t len = strlen(line);
+    if (len > 0 && line[len - 1] == '\n') {
+        line[len - 1] = '\0';
+        len--;
+    }
+    
+    char cleaned[8192];
+    size_t clen = 0;
+    for (size_t i = 0; i < len && clen < sizeof(cleaned) - 1; i++) {
+        if (!isspace((unsigned char)line[i])) {
+            cleaned[clen++] = line[i];
+        }
+    }
+    cleaned[clen] = '\0';
+    
+    size_t decoded_len;
+    if (base64_decode(cleaned, buffer, &decoded_len)) {
+        return decoded_len;
+    }
+    
+    return 0;
 }
 
 void utils_show_key(const uint8_t *key, size_t key_len) {

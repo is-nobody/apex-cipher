@@ -13,37 +13,25 @@
 static uint8_t current_key[64];
 static size_t current_key_len = DEFAULT_KEY_SIZE;
 
-static size_t read_multiline(uint8_t *buffer, size_t max_len) {
-    size_t total = 0;
+static size_t read_single_line(uint8_t *buffer, size_t max_len) {
     char line[8192];
     
-    printf("Enter text (empty line to finish):\n");
+    printf("Enter text: ");
     
-    while (total < max_len && fgets(line, sizeof(line), stdin)) {
-        int empty = 1;
-        for (char *p = line; *p && *p != '\n'; p++) {
-            if (*p != ' ' && *p != '\t' && *p != '\r') {
-                empty = 0;
-                break;
-            }
-        }
-        
-        if (empty && total > 0) break;
-        if (empty && total == 0) continue;
-        
-        size_t line_len = strlen(line);
-        size_t to_copy = (total + line_len <= max_len) ? line_len : (max_len - total);
-        memcpy(buffer + total, line, to_copy);
-        total += to_copy;
-        
-        if (total >= max_len) break;
+    if (!fgets(line, sizeof(line), stdin)) {
+        return 0;
     }
     
-    if (total > 0 && buffer[total - 1] == '\n') {
-        total--;
+    size_t len = strlen(line);
+    if (len > 0 && line[len - 1] == '\n') {
+        line[len - 1] = '\0';
+        len--;
     }
     
-    return total;
+    size_t to_copy = (len < max_len) ? len : max_len;
+    memcpy(buffer, line, to_copy);
+    
+    return to_copy;
 }
 
 void repl_run(void) {
@@ -76,7 +64,7 @@ void repl_run(void) {
         while ((c = getchar()) != '\n' && c != EOF);
         
         if (choice == 1) {
-            size_t input_len = read_multiline(input, MAX_TEXT);
+            size_t input_len = read_single_line(input, MAX_TEXT);
             
             if (input_len == 0) {
                 printf("No data entered.\n\n");
