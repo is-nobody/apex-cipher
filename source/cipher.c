@@ -5,6 +5,14 @@
 #include "encrypt_decrypt.h"
 #include "hmac.h"
 
+static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t len) {
+    uint8_t diff = 0;
+    for (size_t i = 0; i < len; i++) {
+        diff |= a[i] ^ b[i];
+    }
+    return diff;
+}
+
 int cipher_encrypt(const uint8_t *data, size_t data_len,
                    const uint8_t *key, size_t key_len,
                    uint8_t *ciphertext, size_t *out_len) {
@@ -80,7 +88,7 @@ int cipher_decrypt(const uint8_t *ciphertext, size_t len,
     
     const uint8_t *stored_mac = ciphertext + len - HMAC_SIZE;
     
-    if (memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
+    if (ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
         return -2;
     }
     
