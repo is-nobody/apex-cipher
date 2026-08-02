@@ -5,11 +5,13 @@
 #include "repl.h"
 #include "cipher.h"
 #include "utils.h"
+#include "keygen.h"
 
 #define MAX_TEXT 4096
+#define DEFAULT_KEY_SIZE 32
 
-static uint8_t current_key[64] = "key";
-static size_t current_key_len = 3;
+static uint8_t current_key[64];
+static size_t current_key_len = DEFAULT_KEY_SIZE;
 
 static size_t read_multiline(uint8_t *buffer, size_t max_len) {
     size_t total = 0;
@@ -51,6 +53,8 @@ void repl_run(void) {
     size_t enc_len, dec_len;
     int choice;
     
+    keygen_random_key(current_key, DEFAULT_KEY_SIZE);
+
     printf("Welcome to Apex Cipher!\n");
     printf("Max text: %d bytes | Key: up to 64 bytes\n", MAX_TEXT);
     printf("Cipher: 10-round SPN + CBC + HMAC | Format: Base64\n");

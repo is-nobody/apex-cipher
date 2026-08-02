@@ -18,18 +18,33 @@ void keygen_expand(const uint8_t *master_key, size_t key_len,
 void keygen_generate_iv(uint8_t iv[BLOCK_SIZE]) {
     FILE *f = fopen("/dev/urandom", "rb");
     if (f) {
-        size_t bytes_read = fread(iv, 1, BLOCK_SIZE, f);
-        fclose(f);
-        
-        if (bytes_read < BLOCK_SIZE) {
-            for (size_t i = bytes_read; i < BLOCK_SIZE; i++) {
+        if (fread(iv, 1, BLOCK_SIZE, f) < BLOCK_SIZE) {
+            for (int i = 0; i < BLOCK_SIZE; i++) {
                 iv[i] = (uint8_t)(rand() ^ (i * 127));
             }
         }
+        fclose(f);
     } else {
         srand(time(NULL));
         for (int i = 0; i < BLOCK_SIZE; i++) {
             iv[i] = (uint8_t)(rand() ^ (i * 127) ^ (clock() & 0xFF));
+        }
+    }
+}
+
+void keygen_random_key(uint8_t *key, size_t len) {
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (f) {
+        if (fread(key, 1, len, f) < len) {
+            for (size_t i = 0; i < len; i++) {
+                key[i] = (uint8_t)(rand() ^ (i * 127) ^ (clock() & 0xFF));
+            }
+        }
+        fclose(f);
+    } else {
+        srand(time(NULL));
+        for (size_t i = 0; i < len; i++) {
+            key[i] = (uint8_t)(rand() ^ (i * 127) ^ (clock() & 0xFF));
         }
     }
 }

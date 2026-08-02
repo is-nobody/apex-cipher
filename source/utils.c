@@ -61,7 +61,9 @@ size_t utils_read_base64_line(uint8_t *buffer, size_t max_len) {
 }
 
 void utils_show_key(const uint8_t *key, size_t key_len) {
-    printf("Current key: \"");
-    fwrite(key, 1, key_len, stdout);
-    printf("\" (%zu bytes)\n", key_len);
+    printf("Key: ");
+    for (size_t i = 0; i < key_len; i++) {
+        printf("%02x", key[i]);
+    }
+    printf(" (%zu bytes)\n", key_len);
 }

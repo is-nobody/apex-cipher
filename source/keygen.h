@@ -7,10 +7,13 @@
 #include "sbox.h"
 
 #define ROUNDS 10
+#define DEFAULT_KEY_SIZE 32
 
 void keygen_expand(const uint8_t *master_key, size_t key_len,
                    uint8_t round_keys[ROUNDS][BLOCK_SIZE]);
 
 void keygen_generate_iv(uint8_t iv[BLOCK_SIZE]);
+
+void keygen_random_key(uint8_t *key, size_t len);
 
 #endif
