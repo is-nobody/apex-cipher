@@ -5,6 +5,11 @@
 #include "encrypt_decrypt.h"
 #include "hmac.h"
 
+static void secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len--) *p++ = 0;
+}
+
 static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t len) {
     uint8_t diff = 0;
     for (size_t i = 0; i < len; i++) {
@@ -39,6 +44,8 @@ int cipher_encrypt(const uint8_t *data, size_t data_len,
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
+    uint8_t block[BLOCK_SIZE];
+
     for (size_t offset = 0; offset < padded_len; offset += BLOCK_SIZE) {
         uint8_t block[BLOCK_SIZE] = {0};
         size_t chunk = (offset + BLOCK_SIZE <= data_len) ? BLOCK_SIZE : (data_len - offset);
@@ -61,6 +68,11 @@ int cipher_encrypt(const uint8_t *data, size_t data_len,
     pos += HMAC_SIZE;
     
     *out_len = pos;
+    
+    secure_zero(round_keys, sizeof(round_keys));
+    secure_zero(prev, sizeof(prev));
+    secure_zero(block, sizeof(block));
+    
     return 0;
 }
 
@@ -102,6 +114,8 @@ int cipher_decrypt(const uint8_t *ciphertext, size_t len,
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
+    uint8_t decrypted[BLOCK_SIZE];
+
     *out_len = 0;
     
     for (size_t offset = 0; offset < actual_ct_len && *out_len < data_len; offset += BLOCK_SIZE) {
@@ -119,6 +133,13 @@ int cipher_decrypt(const uint8_t *ciphertext, size_t len,
         size_t to_copy = (data_len - *out_len < BLOCK_SIZE) ? (data_len - *out_len) : BLOCK_SIZE;
         memcpy(plaintext + *out_len, decrypted, to_copy);
         *out_len += to_copy;
+    }
+    
+    secure_zero(round_keys, sizeof(round_keys));
+    secure_zero(prev, sizeof(prev));
+    secure_zero(computed_mac, sizeof(computed_mac));
+    if (*out_len == data_len) {
+        secure_zero(decrypted, sizeof(decrypted));
     }
     
     return (*out_len == data_len) ? 0 : -1;
