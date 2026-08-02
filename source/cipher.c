@@ -77,11 +77,12 @@ int cipher_decrypt(const uint8_t *ciphertext, size_t len,
     
     if (data_len == 0 || data_len > MAX_TEXT) return -1;
     
-    size_t expected_ct_len = ((data_len + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE;
+    size_t min_len = BLOCK_SIZE + sizeof(uint32_t) + 
+                    ((data_len + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE + HMAC_SIZE;
+    if (len < min_len) return -1;
+
     size_t actual_ct_len = len - BLOCK_SIZE - sizeof(uint32_t) - HMAC_SIZE;
-    
-    if (actual_ct_len < expected_ct_len) return -1;
-    
+
     const uint8_t *enc_data = ciphertext + BLOCK_SIZE + sizeof(uint32_t);
     uint8_t computed_mac[HMAC_SIZE];
     hmac_compute(key, key_len, enc_data, actual_ct_len, computed_mac);
