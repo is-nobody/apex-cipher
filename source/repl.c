@@ -84,10 +84,6 @@ void repl_run(void) {
                 continue;
             }
             
-            printf("\nOriginal (%zu bytes): ", input_len);
-            utils_print_safe(input, input_len);
-            printf("\n\n");
-            
             if (cipher_encrypt(input, input_len, current_key, current_key_len, 
                               encrypted, &enc_len) != 0) {
                 printf("Encryption failed!\n\n");
@@ -96,24 +92,7 @@ void repl_run(void) {
             
             printf("Encrypted (%zu bytes):\n", enc_len);
             utils_print_base64(encrypted, enc_len);
-            
-            int result = cipher_decrypt(encrypted, enc_len, current_key, current_key_len,
-                                       decrypted, &dec_len);
-            if (result == 0) {
-                printf("Verify (%zu bytes): ", dec_len);
-                utils_print_safe(decrypted, dec_len);
-                printf("\n");
-                if (dec_len == input_len && memcmp(input, decrypted, input_len) == 0) {
-                    printf("✓ OK\n\n");
-                } else {
-                    printf("✗ Data mismatch\n\n");
-                }
-            } else if (result == -2) {
-                printf("✗ AUTH FAILED!\n\n");
-            } else {
-                printf("✗ Decryption failed\n\n");
-            }
-            
+            printf("\n");
         } else if (choice == 2) {
             uint8_t data_buf[MAX_ENCRYPTED];
             size_t byte_count = utils_read_base64_line(data_buf, MAX_ENCRYPTED);
@@ -123,8 +102,6 @@ void repl_run(void) {
                 continue;
             }
             
-            printf("Read %zu bytes\n", byte_count);
-            
             int result = cipher_decrypt(data_buf, byte_count, current_key, current_key_len,
                                        decrypted, &dec_len);
             if (result == -2) {
@@ -132,7 +109,7 @@ void repl_run(void) {
             } else if (result != 0) {
                 printf("Decryption failed! (code: %d)\n\n", result);
             } else {
-                printf("Decrypted (%zu bytes): ", dec_len);
+                printf("Decrypted (%zu bytes):\n", dec_len);
                 utils_print_safe(decrypted, dec_len);
                 printf("\n\n");
             }
