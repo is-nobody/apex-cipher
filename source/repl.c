@@ -65,7 +65,6 @@ void repl_run(void) {
         printf("1. Encrypt\n");
         printf("2. Decrypt\n");
         printf("3. Set key\n");
-        printf("4. Exit\n");
         printf("> ");
         
         if (scanf("%d", &choice) != 1) {
@@ -136,9 +135,6 @@ void repl_run(void) {
             }
             printf("\n");
             
-        } else if (choice == 4) {
-            printf("Bye!\n");
-            break;
         } else {
             printf("Use 1-4.\n\n");
         }
