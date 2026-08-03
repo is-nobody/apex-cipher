@@ -66,7 +66,16 @@ int cipher_encrypt_file(const char *input_path,
     sbox_init();
     
     uint64_t original_size = (uint64_t)file_size;
-    fwrite(&original_size, 1, sizeof(original_size), output);
+    uint8_t size_bytes[8];
+    size_bytes[0] = (uint8_t)(original_size >> 56);
+    size_bytes[1] = (uint8_t)(original_size >> 48);
+    size_bytes[2] = (uint8_t)(original_size >> 40);
+    size_bytes[3] = (uint8_t)(original_size >> 32);
+    size_bytes[4] = (uint8_t)(original_size >> 24);
+    size_bytes[5] = (uint8_t)(original_size >> 16);
+    size_bytes[6] = (uint8_t)(original_size >> 8);
+    size_bytes[7] = (uint8_t)(original_size);
+    fwrite(size_bytes, 1, sizeof(size_bytes), output);
     
     uint8_t salt[KDF_SALT_SIZE];
     keygen_generate_iv(salt);
@@ -217,11 +226,19 @@ int cipher_decrypt_file(const char *input_path,
     FILE *input = fopen(input_path, "rb");
     if (!input) return -1;
     
-    uint64_t original_size;
-    if (fread(&original_size, 1, sizeof(original_size), input) != sizeof(original_size)) {
+    uint8_t size_bytes[8];
+    if (fread(size_bytes, 1, sizeof(size_bytes), input) != sizeof(size_bytes)) {
         fclose(input);
         return -1;
     }
+    uint64_t original_size = ((uint64_t)size_bytes[0] << 56) |
+                             ((uint64_t)size_bytes[1] << 48) |
+                             ((uint64_t)size_bytes[2] << 40) |
+                             ((uint64_t)size_bytes[3] << 32) |
+                             ((uint64_t)size_bytes[4] << 24) |
+                             ((uint64_t)size_bytes[5] << 16) |
+                             ((uint64_t)size_bytes[6] << 8)  |
+                             ((uint64_t)size_bytes[7]);
     
     uint8_t salt[KDF_SALT_SIZE];
     if (fread(salt, 1, KDF_SALT_SIZE, input) != KDF_SALT_SIZE) {
