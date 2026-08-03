@@ -14,7 +14,6 @@ add_executable(apex-cipher
     source/encrypt_decrypt.c
     source/cipher.c
     source/utils.c
-    source/codecs.c
     source/hash.c
     source/hmac.c
     source/crypto_context.c

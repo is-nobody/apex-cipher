@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include "repl.h"
 #include "cipher.h"
 #include "utils.h"
@@ -19,39 +20,14 @@ static void init_key(void) {
     }
 }
 
-static size_t read_single_line(uint8_t *buffer, size_t max_len) {
-    char line[8192];
-    
-    printf("Enter text: ");
-    
-    if (!fgets(line, sizeof(line), stdin)) {
-        return 0;
-    }
-    
-    size_t len = strlen(line);
-    if (len > 0 && line[len - 1] == '\n') {
-        line[len - 1] = '\0';
-        len--;
-    }
-    
-    size_t to_copy = (len < max_len) ? len : max_len;
-    memcpy(buffer, line, to_copy);
-    
-    return to_copy;
-}
-
 void repl_run(void) {
     uint8_t input[MAX_TEXT];
-    uint8_t encrypted[MAX_ENCRYPTED];
-    uint8_t decrypted[MAX_TEXT];
-    size_t enc_len, dec_len;
     int choice;
     
     init_key();
 
-    printf("Welcome to Apex Cipher!\n");
-    printf("Max text: %d bytes | Key: up to 64 bytes\n", MAX_TEXT);
-    printf("Cipher: 10-round SPN + CBC + HMAC | Format: Base64\n");
+    printf("Welcome to Apex Cipher 26.07!\n");
+    printf("Max text in REPL: %d bytes | Key: up to %d bytes\n", MAX_TEXT, DEFAULT_KEY_SIZE * 2);
     utils_show_key(current_key, current_key_len);
     printf("\n");
     
@@ -70,42 +46,91 @@ void repl_run(void) {
         while ((c = getchar()) != '\n' && c != EOF);
         
         if (choice == 1) {
-            size_t input_len = read_single_line(input, MAX_TEXT);
+            printf("Enter text: ");
+            if (!fgets((char*)input, MAX_TEXT, stdin)) continue;
+            size_t len = strlen((char*)input);
+            if (len > 0 && input[len - 1] == '\n') { input[len - 1] = 0; len--; }
+            if (len == 0) { printf("No data entered.\n\n"); continue; }
             
-            if (input_len == 0) {
-                printf("No data entered.\n\n");
-                continue;
-            }
+            char in_name[] = "/tmp/apex_repl_in.XXXXXX";
+            char out_name[] = "/tmp/apex_repl_out.XXXXXX";
+            int fd_in = mkstemp(in_name);
+            int fd_out = mkstemp(out_name);
+            if (fd_in < 0 || fd_out < 0) { printf("Error creating temp files.\n\n"); continue; }
             
-            if (cipher_encrypt(input, input_len, current_key, current_key_len, 
-                              encrypted, &enc_len) != 0) {
+            FILE *fin = fdopen(fd_in, "wb");
+            fwrite(input, 1, len, fin);
+            fclose(fin);
+            close(fd_out);
+            
+            if (cipher_encrypt_file(in_name, out_name, current_key, current_key_len, NULL) != 0) {
                 printf("Encryption failed!\n\n");
+                unlink(in_name);
+                unlink(out_name);
                 continue;
             }
             
-            printf("Encrypted (%zu bytes):\n", enc_len);
-            utils_print_base64(encrypted, enc_len);
-            printf("\n");
+            FILE *fout = fopen(out_name, "rb");
+            fseek(fout, 0, SEEK_END);
+            long enc_size = ftell(fout);
+            fseek(fout, 0, SEEK_SET);
+            
+            printf("Encrypted (%ld bytes):\n", enc_size);
+            uint8_t buf[16];
+            size_t n;
+            while ((n = fread(buf, 1, 16, fout)) > 0) {
+                for (size_t i = 0; i < n; i++) printf("%02x", buf[i]);
+            }
+            printf("\n\n");
+            fclose(fout);
+            unlink(in_name);
+            unlink(out_name);
+            
         } else if (choice == 2) {
-            uint8_t data_buf[MAX_ENCRYPTED];
-            size_t byte_count = utils_read_base64_line(data_buf, MAX_ENCRYPTED);
+            printf("Enter hex: ");
+            char hex[65536];
+            if (!fgets(hex, sizeof(hex), stdin)) continue;
+            size_t hex_len = strlen(hex);
+            if (hex_len > 0 && hex[hex_len - 1] == '\n') { hex[hex_len - 1] = 0; hex_len--; }
+            if (hex_len == 0) { printf("No data entered.\n\n"); continue; }
             
-            if (byte_count == 0) {
-                printf("No data entered.\n\n");
-                continue;
+            char in_name[] = "/tmp/apex_repl_in.XXXXXX";
+            char out_name[] = "/tmp/apex_repl_out.XXXXXX";
+            int fd_in = mkstemp(in_name);
+            int fd_out = mkstemp(out_name);
+            if (fd_in < 0 || fd_out < 0) { printf("Error creating temp files.\n\n"); continue; }
+            
+            FILE *fin = fdopen(fd_in, "wb");
+            for (size_t i = 0; i + 1 < hex_len; i += 2) {
+                unsigned int byte;
+                sscanf(hex + i, "%2x", &byte);
+                fputc(byte, fin);
             }
+            fclose(fin);
+            close(fd_out);
             
-            int result = cipher_decrypt(data_buf, byte_count, current_key, current_key_len,
-                                       decrypted, &dec_len);
+            int result = cipher_decrypt_file(in_name, out_name, current_key, current_key_len, NULL);
+            
             if (result == -2) {
                 printf("Wrong key or corrupted data!\n\n");
             } else if (result != 0) {
                 printf("Decryption failed! (code: %d)\n\n", result);
             } else {
-                printf("Decrypted (%zu bytes):\n", dec_len);
-                utils_print_safe(decrypted, dec_len);
-                printf("\n\n");
+                FILE *fout = fopen(out_name, "rb");
+                fseek(fout, 0, SEEK_END);
+                long dec_size = ftell(fout);
+                fseek(fout, 0, SEEK_SET);
+                
+                uint8_t *dec = (uint8_t*)malloc(dec_size + 1);
+                if (fread(dec, 1, dec_size, fout) == (size_t)dec_size) {
+                    dec[dec_size] = 0;
+                    printf("Decrypted (%ld bytes):\n%s\n\n", dec_size, dec);
+                }
+                fclose(fout);
+                free(dec);
             }
+            unlink(in_name);
+            unlink(out_name);
             
         } else if (choice == 3) {
             utils_show_key(current_key, current_key_len);
@@ -113,7 +138,6 @@ void repl_run(void) {
             
             uint8_t new_key[65];
             size_t new_len = 0;
-            
             int c;
             while (new_len < 64 && (c = getchar()) != '\n' && c != EOF) {
                 new_key[new_len++] = (uint8_t)c;
@@ -123,13 +147,11 @@ void repl_run(void) {
                 memcpy(current_key, new_key, new_len);
                 current_key_len = new_len;
                 printf("Updated! ");
-                utils_show_key(current_key, current_key_len);
             } else {
                 printf("Unchanged. ");
-                utils_show_key(current_key, current_key_len);
             }
+            utils_show_key(current_key, current_key_len);
             printf("\n");
-            
         } else {
             printf("Use 1-3.\n\n");
         }

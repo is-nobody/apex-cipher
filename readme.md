@@ -48,10 +48,9 @@ cmake --build build/ --parallel
 From the REPL, encrypt a message:
 
 ```bash
-Welcome to Apex Cipher!
-Max text: 16384 bytes | Key: up to 64 bytes
-Cipher: 10-round SPN + CBC + HMAC | Format: Base64
-Key: 1e7bf8c41bc9b6935f3c14fc8516ab7cd2ef18b94f07d9cd7ca493807284c85b (32 bytes)
+Welcome to Apex Cipher 26.07!
+Max text in REPL: 16384 bytes | Key: up to 64 bytes
+Key: 70b4865d7d09b6cf4207b20cbedcb14bc42847b3af8a2edc0a73687b7ed368f8 (32 bytes)
 
 1. Encrypt
 2. Decrypt
@@ -59,7 +58,7 @@ Key: 1e7bf8c41bc9b6935f3c14fc8516ab7cd2ef18b94f07d9cd7ca493807284c85b (32 bytes)
 > 1
 Enter text: account password: pass911 
 Encrypted (84 bytes):
-wXsFvxTfOug3VODqiIAFbxoAAABcozU7py+YoP2nOPLDmkpwMCit2G2KFons03eun4//1+UngSIkYvZOvDC4NMhO6q25AkgelY1GClHwbkKINA2R
+663ef7d6144d8bc3a90ff43e52e73e171a0000007c695b6eb313e67fd516018753640343f94815959e8dffcaad64354ec18d0975772c67a945bfd140a41461e1014012e9a79216e53d84f3d6596b24b80624efc6
 ```
 
 ### File Encryption
@@ -68,11 +67,13 @@ When you need to work with files, use the `encode` and `decode` arguments:
 ```bash
 none@root:~$ apex-cipher encode main.c mykey123
 Key: 6d796b6579313233 (8 bytes)
-Successfully encrypted: main.enc (10057 bytes)
+Progress: 100.0% (6123 / 6123 bytes)
+Successfully encrypted: main.enc
 
 none@root:~$ apex-cipher decode main.enc mykey123
 Key: 6d796b6579313233 (8 bytes)
-Successfully decrypted: main.dec (7475 bytes)
+Progress: 100.0% (6123 / 6123 bytes)
+Successfully decrypted: main.dec
 ```
 
 ## Security Features

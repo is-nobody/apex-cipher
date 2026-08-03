@@ -1,3 +1,4 @@
+// source/cipher.c
 #include <string.h>
 #include <stdlib.h>
 #include "cipher.h"
@@ -7,7 +8,7 @@
 #include "hmac.h"
 #include "hash.h"
 
-#define STREAM_CHUNK 65536  // 64KB chunks
+#define STREAM_CHUNK 65536
 
 static void secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
@@ -16,136 +17,9 @@ static void secure_zero(void *ptr, size_t len) {
 
 static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t len) {
     uint8_t diff = 0;
-    for (size_t i = 0; i < len; i++) {
-        diff |= a[i] ^ b[i];
-    }
+    for (size_t i = 0; i < len; i++) diff |= a[i] ^ b[i];
     return diff;
 }
-
-// ========== IN-MEMORY ==========
-
-int cipher_encrypt(const uint8_t *data, size_t data_len,
-                   const uint8_t *key, size_t key_len,
-                   uint8_t *ciphertext, size_t *out_len) {
-    sbox_init();
-    
-    if (data_len == 0 || data_len > MAX_TEXT) return -1;
-    
-    uint8_t round_keys[ROUNDS][BLOCK_SIZE];
-    keygen_expand(key, key_len, round_keys);
-    
-    uint8_t iv[BLOCK_SIZE];
-    keygen_generate_iv(iv);
-    
-    memcpy(ciphertext, iv, BLOCK_SIZE);
-    size_t pos = BLOCK_SIZE;
-    
-    uint32_t data_size = (uint32_t)data_len;
-    memcpy(ciphertext + pos, &data_size, sizeof(data_size));
-    pos += sizeof(data_size);
-    
-    size_t padded_len = ((data_len + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE;
-    
-    uint8_t prev[BLOCK_SIZE];
-    memcpy(prev, iv, BLOCK_SIZE);
-    
-    for (size_t offset = 0; offset < padded_len; offset += BLOCK_SIZE) {
-        uint8_t block[BLOCK_SIZE] = {0};
-        size_t chunk = (offset + BLOCK_SIZE <= data_len) ? BLOCK_SIZE : (data_len - offset);
-        memcpy(block, data + offset, chunk);
-        
-        for (int i = 0; i < BLOCK_SIZE; i++) {
-            block[i] ^= prev[i];
-        }
-        
-        encrypt_block(block, round_keys);
-        memcpy(prev, block, BLOCK_SIZE);
-        memcpy(ciphertext + pos, block, BLOCK_SIZE);
-        pos += BLOCK_SIZE;
-    }
-
-    uint8_t mac[HMAC_SIZE];
-    hmac_compute(key, key_len, ciphertext, pos, mac);
-    memcpy(ciphertext + pos, mac, HMAC_SIZE);
-    pos += HMAC_SIZE;
-    
-    *out_len = pos;
-    
-    secure_zero(round_keys, sizeof(round_keys));
-    secure_zero(prev, sizeof(prev));
-    
-    return 0;
-}
-
-int cipher_decrypt(const uint8_t *ciphertext, size_t len,
-                   const uint8_t *key, size_t key_len,
-                   uint8_t *plaintext, size_t *out_len) {
-    sbox_init();
-    
-    if (len < BLOCK_SIZE + sizeof(uint32_t) + BLOCK_SIZE + HMAC_SIZE) return -1;
-    if (len > MAX_ENCRYPTED) return -1;
-    
-    size_t mac_offset = len - HMAC_SIZE;
-    uint8_t computed_mac[HMAC_SIZE];
-    hmac_compute(key, key_len, ciphertext, mac_offset, computed_mac);
-    
-    const uint8_t *stored_mac = ciphertext + mac_offset;
-    
-    if (ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
-        secure_zero(computed_mac, sizeof(computed_mac));
-        return -2;
-    }
-    secure_zero(computed_mac, sizeof(computed_mac));
-    
-    uint8_t iv[BLOCK_SIZE];
-    memcpy(iv, ciphertext, BLOCK_SIZE);
-    
-    uint32_t data_len;
-    memcpy(&data_len, ciphertext + BLOCK_SIZE, sizeof(data_len));
-    
-    if (data_len == 0 || data_len > MAX_TEXT) return -1;
-    
-    size_t expected_encrypted = ((data_len + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE;
-    size_t expected_len = BLOCK_SIZE + sizeof(uint32_t) + expected_encrypted + HMAC_SIZE;
-    
-    if (len != expected_len) return -1;
-    
-    const uint8_t *enc_data = ciphertext + BLOCK_SIZE + sizeof(uint32_t);
-    size_t actual_ct_len = len - BLOCK_SIZE - sizeof(uint32_t) - HMAC_SIZE;
-    
-    uint8_t round_keys[ROUNDS][BLOCK_SIZE];
-    keygen_expand(key, key_len, round_keys);
-    
-    uint8_t prev[BLOCK_SIZE];
-    memcpy(prev, iv, BLOCK_SIZE);
-    
-    *out_len = 0;
-    
-    for (size_t offset = 0; offset < actual_ct_len && *out_len < data_len; offset += BLOCK_SIZE) {
-        uint8_t decrypted[BLOCK_SIZE];
-        memcpy(decrypted, enc_data + offset, BLOCK_SIZE);
-        
-        decrypt_block(decrypted, round_keys);
-        
-        for (int i = 0; i < BLOCK_SIZE; i++) {
-            decrypted[i] ^= prev[i];
-        }
-        
-        memcpy(prev, enc_data + offset, BLOCK_SIZE);
-        
-        size_t to_copy = (data_len - *out_len < BLOCK_SIZE) ? (data_len - *out_len) : BLOCK_SIZE;
-        memcpy(plaintext + *out_len, decrypted, to_copy);
-        *out_len += to_copy;
-    }
-    
-    secure_zero(round_keys, sizeof(round_keys));
-    secure_zero(prev, sizeof(prev));
-    secure_zero(iv, sizeof(iv));
-    
-    return (*out_len == data_len) ? 0 : -1;
-}
-
-// ========== STREAMING FILE ==========
 
 int cipher_encrypt_file(const char *input_path,
                         const char *output_path,
@@ -159,16 +33,10 @@ int cipher_encrypt_file(const char *input_path,
     long file_size = ftell(input);
     fseek(input, 0, SEEK_SET);
     
-    if (file_size <= 0) {
-        fclose(input);
-        return -1;
-    }
+    if (file_size <= 0) { fclose(input); return -1; }
     
     FILE *output = fopen(output_path, "wb");
-    if (!output) {
-        fclose(input);
-        return -1;
-    }
+    if (!output) { fclose(input); return -1; }
     
     sbox_init();
     
@@ -199,7 +67,6 @@ int cipher_encrypt_file(const char *input_path,
     uint8_t ipad[HMAC_BLOCK_SIZE];
     for (int i = 0; i < HMAC_BLOCK_SIZE; i++) ipad[i] = hmac_key[i] ^ 0x36;
     hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
-    
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
     hash_update(&hmac_ctx, (uint8_t*)&data_size, sizeof(data_size));
     
@@ -207,18 +74,13 @@ int cipher_encrypt_file(const char *input_path,
     memcpy(prev, iv, BLOCK_SIZE);
     
     uint8_t *buffer = (uint8_t*)malloc(STREAM_CHUNK);
-    if (!buffer) {
-        fclose(input);
-        fclose(output);
-        return -1;
-    }
+    if (!buffer) { fclose(input); fclose(output); return -1; }
     
     size_t total_read = 0;
     size_t bytes_read;
     
     while ((bytes_read = fread(buffer, 1, STREAM_CHUNK, input)) > 0) {
         size_t processed = 0;
-        
         while (processed < bytes_read) {
             uint8_t block[BLOCK_SIZE] = {0};
             size_t chunk = bytes_read - processed;
@@ -226,17 +88,12 @@ int cipher_encrypt_file(const char *input_path,
             memcpy(block, buffer + processed, chunk);
             
             for (int i = 0; i < BLOCK_SIZE; i++) block[i] ^= prev[i];
-            
             encrypt_block(block, round_keys);
-            
             hash_update(&hmac_ctx, block, BLOCK_SIZE);
-            
             fwrite(block, 1, BLOCK_SIZE, output);
-            
             memcpy(prev, block, BLOCK_SIZE);
             processed += chunk;
         }
-        
         total_read += bytes_read;
         if (progress) progress(total_read, (size_t)file_size);
     }
@@ -259,7 +116,6 @@ int cipher_encrypt_file(const char *input_path,
     secure_zero(prev, sizeof(prev));
     secure_zero(hmac_key, sizeof(hmac_key));
     free(buffer);
-    
     fclose(input);
     fclose(output);
     return 0;
@@ -286,17 +142,11 @@ int cipher_decrypt_file(const char *input_path,
     long total_size = ftell(input);
     long encrypted_size = total_size - BLOCK_SIZE - sizeof(uint32_t) - HMAC_SIZE;
     
-    if (encrypted_size <= 0 || original_size == 0) {
-        fclose(input);
-        return -1;
-    }
+    if (encrypted_size <= 0 || original_size == 0) { fclose(input); return -1; }
     
     uint8_t stored_mac[HMAC_SIZE];
     fseek(input, -HMAC_SIZE, SEEK_END);
-    if (fread(stored_mac, 1, HMAC_SIZE, input) != HMAC_SIZE) {
-        fclose(input);
-        return -1;
-    }
+    if (fread(stored_mac, 1, HMAC_SIZE, input) != HMAC_SIZE) { fclose(input); return -1; }
     
     fseek(input, BLOCK_SIZE + sizeof(uint32_t), SEEK_SET);
     
@@ -317,7 +167,6 @@ int cipher_decrypt_file(const char *input_path,
     uint8_t ipad[HMAC_BLOCK_SIZE];
     for (int i = 0; i < HMAC_BLOCK_SIZE; i++) ipad[i] = hmac_key[i] ^ 0x36;
     hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
-    
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
     hash_update(&hmac_ctx, (uint8_t*)&original_size, sizeof(original_size));
     
@@ -327,13 +176,12 @@ int cipher_decrypt_file(const char *input_path,
     long remaining = encrypted_size;
     while (remaining > 0) {
         size_t to_read = (remaining < STREAM_CHUNK) ? (size_t)remaining : STREAM_CHUNK;
-        size_t read_bytes = fread(chunk_buf, 1, to_read, input);
-        if (read_bytes != to_read) {
+        if (fread(chunk_buf, 1, to_read, input) != to_read) {
             free(chunk_buf);
             fclose(input);
             return -1;
         }
-        hash_update(&hmac_ctx, chunk_buf, read_bytes);
+        hash_update(&hmac_ctx, chunk_buf, to_read);
         remaining -= to_read;
     }
     
@@ -352,19 +200,13 @@ int cipher_decrypt_file(const char *input_path,
     
     if (ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
         secure_zero(hmac_key, sizeof(hmac_key));
-        secure_zero(computed_mac, sizeof(computed_mac));
         free(chunk_buf);
         fclose(input);
         return -2;
     }
     
     FILE *output = fopen(output_path, "wb");
-    if (!output) { 
-        secure_zero(hmac_key, sizeof(hmac_key));
-        free(chunk_buf); 
-        fclose(input); 
-        return -1; 
-    }
+    if (!output) { free(chunk_buf); fclose(input); return -1; }
     
     sbox_init();
     uint8_t round_keys[ROUNDS][BLOCK_SIZE];
@@ -388,7 +230,6 @@ int cipher_decrypt_file(const char *input_path,
             
             uint8_t block[BLOCK_SIZE];
             memcpy(block, chunk_buf + i, BLOCK_SIZE);
-            
             decrypt_block(block, round_keys);
             for (int j = 0; j < BLOCK_SIZE; j++) block[j] ^= prev[j];
             memcpy(prev, chunk_buf + i, BLOCK_SIZE);
@@ -398,7 +239,6 @@ int cipher_decrypt_file(const char *input_path,
             fwrite(block, 1, to_write, output);
             total_written += to_write;
         }
-        
         remaining -= read_bytes;
         if (progress) progress(total_written, original_size);
     }
