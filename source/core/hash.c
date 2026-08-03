@@ -2,68 +2,88 @@
 #include "sbox.h"
 #include <string.h>
 
-#define HASH_ROUNDS 10
+#define HASH_ROUNDS 64
 
-static void hash_mix(uint32_t *state) {
-    uint8_t *bytes = (uint8_t*)state;
+static const uint32_t K[64] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
+    0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+    0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+    0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3,
+    0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5,
+    0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+};
+
+#define ROTR(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
+#define CH(x, y, z) (((x) & (y)) ^ (~(x) & (z)))
+#define MAJ(x, y, z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+#define EP0(x) (ROTR(x, 2) ^ ROTR(x, 13) ^ ROTR(x, 22))
+#define EP1(x) (ROTR(x, 6) ^ ROTR(x, 11) ^ ROTR(x, 25))
+#define SIG0(x) (ROTR(x, 7) ^ ROTR(x, 18) ^ ((x) >> 3))
+#define SIG1(x) (ROTR(x, 17) ^ ROTR(x, 19) ^ ((x) >> 10))
+
+static void hash_mix(uint32_t *state, const uint8_t *block) {
+    uint32_t W[64];
+    uint32_t a, b, c, d, e, f, g, h, T1, T2;
     
-    bytes[0]  = SBOX[bytes[0]];   bytes[1]  = SBOX[bytes[1]];
-    bytes[2]  = SBOX[bytes[2]];   bytes[3]  = SBOX[bytes[3]];
-    bytes[4]  = SBOX[bytes[4]];   bytes[5]  = SBOX[bytes[5]];
-    bytes[6]  = SBOX[bytes[6]];   bytes[7]  = SBOX[bytes[7]];
-    bytes[8]  = SBOX[bytes[8]];   bytes[9]  = SBOX[bytes[9]];
-    bytes[10] = SBOX[bytes[10]];  bytes[11] = SBOX[bytes[11]];
-    bytes[12] = SBOX[bytes[12]];  bytes[13] = SBOX[bytes[13]];
-    bytes[14] = SBOX[bytes[14]];  bytes[15] = SBOX[bytes[15]];
-    bytes[16] = SBOX[bytes[16]];  bytes[17] = SBOX[bytes[17]];
-    bytes[18] = SBOX[bytes[18]];  bytes[19] = SBOX[bytes[19]];
-    bytes[20] = SBOX[bytes[20]];  bytes[21] = SBOX[bytes[21]];
-    bytes[22] = SBOX[bytes[22]];  bytes[23] = SBOX[bytes[23]];
-    bytes[24] = SBOX[bytes[24]];  bytes[25] = SBOX[bytes[25]];
-    bytes[26] = SBOX[bytes[26]];  bytes[27] = SBOX[bytes[27]];
-    bytes[28] = SBOX[bytes[28]];  bytes[29] = SBOX[bytes[29]];
-    bytes[30] = SBOX[bytes[30]];  bytes[31] = SBOX[bytes[31]];
-    
-    for (int r = 0; r < HASH_ROUNDS; r++) {
-        uint32_t temp[8];
-        
-        for (int i = 0; i < 8; i++) {
-            temp[i] = state[i] ^ 
-                      ((state[(i + 1) % 8] >> 7) | (state[(i + 1) % 8] << 25)) ^
-                      ((state[(i + 3) % 8] >> 13) | (state[(i + 3) % 8] << 19));
-            temp[i] += state[(i + 5) % 8];
-            temp[i] ^= (state[(i + 7) % 8] << 11) | (state[(i + 7) % 8] >> 21);
-        }
-        
-        memcpy(state, temp, 32);
+    for (int t = 0; t < 16; t++) {
+        W[t] = ((uint32_t)block[t * 4]     << 24) |
+               ((uint32_t)block[t * 4 + 1] << 16) |
+               ((uint32_t)block[t * 4 + 2] << 8)  |
+               ((uint32_t)block[t * 4 + 3]);
     }
+    
+    for (int t = 16; t < 64; t++) {
+        W[t] = SIG1(W[t - 2]) + W[t - 7] + SIG0(W[t - 15]) + W[t - 16];
+    }
+    
+    a = state[0];
+    b = state[1];
+    c = state[2];
+    d = state[3];
+    e = state[4];
+    f = state[5];
+    g = state[6];
+    h = state[7];
+    
+    for (int t = 0; t < 64; t++) {
+        T1 = h + EP1(e) + CH(e, f, g) + K[t] + W[t];
+        T2 = EP0(a) + MAJ(a, b, c);
+        h = g;
+        g = f;
+        f = e;
+        e = d + T1;
+        d = c;
+        c = b;
+        b = a;
+        a = T1 + T2;
+    }
+    
+    state[0] += a;
+    state[1] += b;
+    state[2] += c;
+    state[3] += d;
+    state[4] += e;
+    state[5] += f;
+    state[6] += g;
+    state[7] += h;
 }
 
 static void hash_compress(HASH_CTX *ctx, const uint8_t *block) {
-    uint32_t W[8];
-    uint32_t old_state[8];
-    
-    memcpy(old_state, ctx->state, 32);
-    
+    uint32_t state[8];
+    memcpy(state, ctx->state, 32);
+    hash_mix(state, block);
     for (int i = 0; i < 8; i++) {
-        W[i] = ((uint32_t)block[i * 8]     << 24) |
-               ((uint32_t)block[i * 8 + 1] << 16) |
-               ((uint32_t)block[i * 8 + 2] << 8)  |
-               ((uint32_t)block[i * 8 + 3])       |
-               ((uint32_t)block[i * 8 + 4] << 24) |
-               ((uint32_t)block[i * 8 + 5] << 16) |
-               ((uint32_t)block[i * 8 + 6] << 8)  |
-               ((uint32_t)block[i * 8 + 7]);
-    }
-    
-    for (int i = 0; i < 8; i++) {
-        ctx->state[i] ^= W[i];
-    }
-    
-    hash_mix(ctx->state);
-    
-    for (int i = 0; i < 8; i++) {
-        ctx->state[i] += old_state[i];
+        ctx->state[i] = state[i];
     }
 }
 
