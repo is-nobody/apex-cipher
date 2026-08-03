@@ -57,9 +57,6 @@ int cipher_encrypt_file(const char *input_path,
     keygen_generate_iv(iv);
     fwrite(iv, 1, BLOCK_SIZE, output);
     
-    uint32_t data_size = (uint32_t)file_size;
-    fwrite(&data_size, 1, sizeof(data_size), output);
-    
     uint8_t hmac_key[HMAC_BLOCK_SIZE];
     memset(hmac_key, 0, HMAC_BLOCK_SIZE);
     memcpy(hmac_key, derived_key, KDF_DERIVED_KEY_SIZE);
@@ -72,7 +69,6 @@ int cipher_encrypt_file(const char *input_path,
     hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
     hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
-    hash_update(&hmac_ctx, (uint8_t*)&data_size, sizeof(data_size));
     hash_update(&hmac_ctx, derived_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t prev[BLOCK_SIZE];
@@ -150,10 +146,8 @@ int cipher_decrypt_file(const char *input_path,
                derived_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t iv[BLOCK_SIZE];
-    uint32_t original_size;
     
-    if (fread(iv, 1, BLOCK_SIZE, input) != BLOCK_SIZE ||
-        fread(&original_size, 1, sizeof(original_size), input) != sizeof(original_size)) {
+    if (fread(iv, 1, BLOCK_SIZE, input) != BLOCK_SIZE) {
         secure_zero(derived_key, sizeof(derived_key));
         fclose(input);
         return -1;
@@ -161,9 +155,9 @@ int cipher_decrypt_file(const char *input_path,
     
     fseek(input, 0, SEEK_END);
     long total_size = ftell(input);
-    long encrypted_size = total_size - KDF_SALT_SIZE - BLOCK_SIZE - sizeof(uint32_t) - HMAC_SIZE;
+    long encrypted_size = total_size - KDF_SALT_SIZE - BLOCK_SIZE - HMAC_SIZE;
     
-    if (encrypted_size <= 0 || original_size == 0) {
+    if (encrypted_size <= 0) {
         secure_zero(derived_key, sizeof(derived_key));
         fclose(input); 
         return -1; 
@@ -177,7 +171,7 @@ int cipher_decrypt_file(const char *input_path,
         return -1; 
     }
     
-    fseek(input, KDF_SALT_SIZE + BLOCK_SIZE + sizeof(uint32_t), SEEK_SET);
+    fseek(input, KDF_SALT_SIZE + BLOCK_SIZE, SEEK_SET);
     
     uint8_t hmac_key[HMAC_BLOCK_SIZE];
     memset(hmac_key, 0, HMAC_BLOCK_SIZE);
@@ -191,7 +185,6 @@ int cipher_decrypt_file(const char *input_path,
     hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
     hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
-    hash_update(&hmac_ctx, (uint8_t*)&original_size, sizeof(original_size));
     hash_update(&hmac_ctx, derived_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t *chunk_buf = (uint8_t*)malloc(STREAM_CHUNK);
@@ -247,12 +240,12 @@ int cipher_decrypt_file(const char *input_path,
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
-    fseek(input, KDF_SALT_SIZE + BLOCK_SIZE + sizeof(uint32_t), SEEK_SET);
+    fseek(input, KDF_SALT_SIZE + BLOCK_SIZE, SEEK_SET);
     
     size_t total_written = 0;
     remaining = encrypted_size;
     
-    while (remaining > 0 && total_written < original_size) {
+    while (remaining > 0) {
         size_t to_read = (remaining < STREAM_CHUNK) ? (size_t)remaining : STREAM_CHUNK;
         size_t read_bytes = fread(chunk_buf, 1, to_read, input);
         if (read_bytes == 0) break;
@@ -266,13 +259,11 @@ int cipher_decrypt_file(const char *input_path,
             for (int j = 0; j < BLOCK_SIZE; j++) block[j] ^= prev[j];
             memcpy(prev, chunk_buf + i, BLOCK_SIZE);
             
-            size_t to_write = BLOCK_SIZE;
-            if (total_written + BLOCK_SIZE > original_size) to_write = original_size - total_written;
-            fwrite(block, 1, to_write, output);
-            total_written += to_write;
+            fwrite(block, 1, BLOCK_SIZE, output);
+            total_written += BLOCK_SIZE;
         }
         remaining -= read_bytes;
-        if (progress) progress(total_written, original_size);
+        if (progress) progress(total_written, (size_t)encrypted_size);
     }
     
     secure_zero(derived_key, sizeof(derived_key));
@@ -283,5 +274,5 @@ int cipher_decrypt_file(const char *input_path,
     fclose(input);
     fclose(output);
     
-    return (total_written == original_size) ? 0 : -1;
+    return 0;
 }
