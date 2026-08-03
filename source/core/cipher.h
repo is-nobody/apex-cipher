@@ -5,6 +5,9 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#define CIPHER_BLOCK_SIZE 16
+#define CIPHER_PADDING_BLOCK 16
+
 int cipher_encrypt_file(const char *input_path,
                         const char *output_path,
                         const uint8_t *key, size_t key_len,

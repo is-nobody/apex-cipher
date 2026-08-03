@@ -77,19 +77,21 @@ Successfully decrypted: main.dec
 ```
 
 ## Security Features
-- **10 Rounds:** Provides sufficient diffusion and confusion for symmetric encryption.
+- **10 Rounds + Initial Whitening:** 11 unique round keys derived via HMAC from master key and unique salt per session.
 
-- **CBC Mode:** Each block XORed with previous ciphertext for semantic security.
+- **CBC Mode with PKCS#7:** Each block XORed with previous ciphertext for semantic security, with standard padding for files of any size.
 
-- **HMAC-SHA256:** 32-byte authentication tag to verify integrity (Encrypt-then-MAC).
+- **Encrypt-then-MAC:** HMAC-SHA256 computed over ciphertext (including original file size) to verify integrity before decryption.
 
-- **Random IV:** Unique initialization vector for each encryption operation.
+- **Random Salt & IV:** Unique 16-byte KDF salt and 16-byte initialization vector for each encryption operation.
 
-- **KDF with Salt:** 25,000 PBKDF2-HMAC-SHA256 iterations for password-based keys.
+- **PBKDF2-HMAC-SHA256:** 25,000 iterations with unique salt for password-based key derivation.
+
+- **Original Size Preservation:** File size stored in header and authenticated, preventing truncation attacks.
 
 - **Constant-Time Comparison:** `ct_memcmp` prevents timing attacks on MAC verification.
 
-- **Secure Zeroization:** Sensitive keys and intermediate state explicitly wiped after use.
+- **Secure Zeroization:** Sensitive keys, round keys, and intermediate state explicitly wiped after use.
 
 ## Getting Help
 See [Issues](https://github.com/is-nobody/apex-cipher/issues) for bug reports and feature requests.

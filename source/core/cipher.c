@@ -22,6 +22,30 @@ static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t len) {
     return diff;
 }
 
+static void add_pkcs7_padding(uint8_t *block, size_t data_len, size_t block_size) {
+    uint8_t padding_value = (uint8_t)(block_size - data_len);
+    for (size_t i = data_len; i < block_size; i++) {
+        block[i] = padding_value;
+    }
+}
+
+static int remove_pkcs7_padding(uint8_t *block, size_t block_size, size_t *data_len) {
+    uint8_t padding_value = block[block_size - 1];
+    
+    if (padding_value == 0 || padding_value > block_size) {
+        return -1;
+    }
+    
+    for (size_t i = block_size - padding_value; i < block_size; i++) {
+        if (block[i] != padding_value) {
+            return -1;
+        }
+    }
+    
+    *data_len = block_size - padding_value;
+    return 0;
+}
+
 int cipher_encrypt_file(const char *input_path,
                         const char *output_path,
                         const uint8_t *key, size_t key_len,
@@ -40,6 +64,9 @@ int cipher_encrypt_file(const char *input_path,
     if (!output) { fclose(input); return -1; }
     
     sbox_init();
+    
+    uint64_t original_size = (uint64_t)file_size;
+    fwrite(&original_size, 1, sizeof(original_size), output);
     
     uint8_t salt[KDF_SALT_SIZE];
     keygen_generate_iv(salt);
@@ -67,6 +94,7 @@ int cipher_encrypt_file(const char *input_path,
     uint8_t ipad[HMAC_BLOCK_SIZE];
     for (int i = 0; i < HMAC_BLOCK_SIZE; i++) ipad[i] = hmac_key[i] ^ 0x36;
     hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
+    hash_update(&hmac_ctx, (uint8_t*)&original_size, sizeof(original_size));
     hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
     hash_update(&hmac_ctx, derived_key, KDF_DERIVED_KEY_SIZE);
@@ -83,25 +111,59 @@ int cipher_encrypt_file(const char *input_path,
     
     size_t total_read = 0;
     size_t bytes_read;
+    uint8_t pending_block[BLOCK_SIZE];
+    size_t pending_len = 0;
     
     while ((bytes_read = fread(buffer, 1, STREAM_CHUNK, input)) > 0) {
+        total_read += bytes_read;
         size_t processed = 0;
-        while (processed < bytes_read) {
-            uint8_t block[BLOCK_SIZE] = {0};
-            size_t chunk = bytes_read - processed;
-            if (chunk > BLOCK_SIZE) chunk = BLOCK_SIZE;
-            memcpy(block, buffer + processed, chunk);
+        
+        if (pending_len > 0) {
+            size_t to_copy = BLOCK_SIZE - pending_len;
+            if (to_copy > bytes_read) to_copy = bytes_read;
+            memcpy(pending_block + pending_len, buffer, to_copy);
+            pending_len += to_copy;
+            processed += to_copy;
+            
+            if (pending_len == BLOCK_SIZE) {
+                for (int i = 0; i < BLOCK_SIZE; i++) pending_block[i] ^= prev[i];
+                encrypt_block(pending_block, round_keys);
+                hash_update(&hmac_ctx, pending_block, BLOCK_SIZE);
+                fwrite(pending_block, 1, BLOCK_SIZE, output);
+                memcpy(prev, pending_block, BLOCK_SIZE);
+                pending_len = 0;
+            }
+        }
+        
+        while (processed + BLOCK_SIZE <= bytes_read) {
+            uint8_t block[BLOCK_SIZE];
+            memcpy(block, buffer + processed, BLOCK_SIZE);
             
             for (int i = 0; i < BLOCK_SIZE; i++) block[i] ^= prev[i];
             encrypt_block(block, round_keys);
             hash_update(&hmac_ctx, block, BLOCK_SIZE);
             fwrite(block, 1, BLOCK_SIZE, output);
             memcpy(prev, block, BLOCK_SIZE);
-            processed += chunk;
+            processed += BLOCK_SIZE;
         }
-        total_read += bytes_read;
+        
+        if (processed < bytes_read) {
+            size_t remaining = bytes_read - processed;
+            memcpy(pending_block, buffer + processed, remaining);
+            pending_len = remaining;
+        }
+        
         if (progress) progress(total_read, (size_t)file_size);
     }
+    
+    uint8_t final_block[BLOCK_SIZE];
+    memcpy(final_block, pending_block, pending_len);
+    add_pkcs7_padding(final_block, pending_len, BLOCK_SIZE);
+    
+    for (int i = 0; i < BLOCK_SIZE; i++) final_block[i] ^= prev[i];
+    encrypt_block(final_block, round_keys);
+    hash_update(&hmac_ctx, final_block, BLOCK_SIZE);
+    fwrite(final_block, 1, BLOCK_SIZE, output);
     
     uint8_t inner_hash[HASH_DIGEST_SIZE];
     hash_final(&hmac_ctx, inner_hash);
@@ -121,6 +183,8 @@ int cipher_encrypt_file(const char *input_path,
     secure_zero(round_keys, sizeof(round_keys));
     secure_zero(prev, sizeof(prev));
     secure_zero(hmac_key, sizeof(hmac_key));
+    secure_zero(pending_block, sizeof(pending_block));
+    secure_zero(final_block, sizeof(final_block));
     free(buffer);
     fclose(input);
     fclose(output);
@@ -135,6 +199,12 @@ int cipher_decrypt_file(const char *input_path,
     FILE *input = fopen(input_path, "rb");
     if (!input) return -1;
     
+    uint64_t original_size;
+    if (fread(&original_size, 1, sizeof(original_size), input) != sizeof(original_size)) {
+        fclose(input);
+        return -1;
+    }
+    
     uint8_t salt[KDF_SALT_SIZE];
     if (fread(salt, 1, KDF_SALT_SIZE, input) != KDF_SALT_SIZE) {
         fclose(input);
@@ -146,7 +216,6 @@ int cipher_decrypt_file(const char *input_path,
                derived_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t iv[BLOCK_SIZE];
-    
     if (fread(iv, 1, BLOCK_SIZE, input) != BLOCK_SIZE) {
         secure_zero(derived_key, sizeof(derived_key));
         fclose(input);
@@ -155,23 +224,23 @@ int cipher_decrypt_file(const char *input_path,
     
     fseek(input, 0, SEEK_END);
     long total_size = ftell(input);
-    long encrypted_size = total_size - KDF_SALT_SIZE - BLOCK_SIZE - HMAC_SIZE;
+    long encrypted_size = total_size - sizeof(original_size) - KDF_SALT_SIZE - BLOCK_SIZE - HMAC_SIZE;
     
-    if (encrypted_size <= 0) {
+    if (encrypted_size <= 0 || encrypted_size % BLOCK_SIZE != 0) {
         secure_zero(derived_key, sizeof(derived_key));
         fclose(input); 
         return -1; 
     }
     
     uint8_t stored_mac[HMAC_SIZE];
-    fseek(input, -HMAC_SIZE, SEEK_END);
+    fseek(input, -(long)HMAC_SIZE, SEEK_END);
     if (fread(stored_mac, 1, HMAC_SIZE, input) != HMAC_SIZE) {
         secure_zero(derived_key, sizeof(derived_key));
         fclose(input); 
         return -1; 
     }
     
-    fseek(input, KDF_SALT_SIZE + BLOCK_SIZE, SEEK_SET);
+    fseek(input, sizeof(original_size) + KDF_SALT_SIZE + BLOCK_SIZE, SEEK_SET);
     
     uint8_t hmac_key[HMAC_BLOCK_SIZE];
     memset(hmac_key, 0, HMAC_BLOCK_SIZE);
@@ -183,6 +252,7 @@ int cipher_decrypt_file(const char *input_path,
     uint8_t ipad[HMAC_BLOCK_SIZE];
     for (int i = 0; i < HMAC_BLOCK_SIZE; i++) ipad[i] = hmac_key[i] ^ 0x36;
     hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
+    hash_update(&hmac_ctx, (uint8_t*)&original_size, sizeof(original_size));
     hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
     hash_update(&hmac_ctx, derived_key, KDF_DERIVED_KEY_SIZE);
@@ -240,10 +310,10 @@ int cipher_decrypt_file(const char *input_path,
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
-    fseek(input, KDF_SALT_SIZE + BLOCK_SIZE, SEEK_SET);
+    fseek(input, sizeof(original_size) + KDF_SALT_SIZE + BLOCK_SIZE, SEEK_SET);
     
     size_t total_written = 0;
-    remaining = encrypted_size;
+    remaining = encrypted_size - BLOCK_SIZE;
     
     while (remaining > 0) {
         size_t to_read = (remaining < STREAM_CHUNK) ? (size_t)remaining : STREAM_CHUNK;
@@ -254,22 +324,52 @@ int cipher_decrypt_file(const char *input_path,
             if (i + BLOCK_SIZE > read_bytes) break;
             
             uint8_t block[BLOCK_SIZE];
-            memcpy(block, chunk_buf + i, BLOCK_SIZE);
-            decrypt_block(block, round_keys);
-            for (int j = 0; j < BLOCK_SIZE; j++) block[j] ^= prev[j];
+            uint8_t temp[BLOCK_SIZE];
+            memcpy(temp, chunk_buf + i, BLOCK_SIZE);
+            decrypt_block(temp, round_keys);
+            for (int j = 0; j < BLOCK_SIZE; j++) block[j] = temp[j] ^ prev[j];
             memcpy(prev, chunk_buf + i, BLOCK_SIZE);
             
             fwrite(block, 1, BLOCK_SIZE, output);
             total_written += BLOCK_SIZE;
         }
         remaining -= read_bytes;
-        if (progress) progress(total_written, (size_t)encrypted_size);
+        if (progress) progress(total_written, original_size);
     }
+    
+    uint8_t last_encrypted[BLOCK_SIZE];
+    uint8_t last_decrypted[BLOCK_SIZE];
+    if (fread(last_encrypted, 1, BLOCK_SIZE, input) == BLOCK_SIZE) {
+        decrypt_block(last_encrypted, round_keys);
+        for (int j = 0; j < BLOCK_SIZE; j++) last_decrypted[j] = last_encrypted[j] ^ prev[j];
+        
+        size_t unpadded_len;
+        if (remove_pkcs7_padding(last_decrypted, BLOCK_SIZE, &unpadded_len) != 0) {
+            secure_zero(derived_key, sizeof(derived_key));
+            secure_zero(round_keys, sizeof(round_keys));
+            free(chunk_buf);
+            fclose(input);
+            fclose(output);
+            return -3;
+        }
+        
+        if (unpadded_len > 0) {
+            size_t remaining_to_write = original_size - total_written;
+            if (unpadded_len > remaining_to_write) unpadded_len = remaining_to_write;
+            
+            fwrite(last_decrypted, 1, unpadded_len, output);
+            total_written += unpadded_len;
+        }
+    }
+    
+    if (progress) progress(total_written, original_size);
     
     secure_zero(derived_key, sizeof(derived_key));
     secure_zero(round_keys, sizeof(round_keys));
     secure_zero(prev, sizeof(prev));
     secure_zero(hmac_key, sizeof(hmac_key));
+    secure_zero(last_encrypted, sizeof(last_encrypted));
+    secure_zero(last_decrypted, sizeof(last_decrypted));
     free(chunk_buf);
     fclose(input);
     fclose(output);

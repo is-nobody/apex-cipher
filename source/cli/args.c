@@ -63,6 +63,12 @@ static char* make_output_name(const char *filename, const char *ext) {
     
     char *dot = strrchr(output_name, '.');
     char *slash = strrchr(output_name, '/');
+    
+#ifdef _WIN32
+    char *bslash = strrchr(output_name, '\\');
+    if (bslash && (!slash || bslash > slash)) slash = bslash;
+#endif
+    
     if (dot && (!slash || dot > slash)) *dot = '\0';
     
     strcat(output_name, ext);
