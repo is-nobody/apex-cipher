@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 #define KDF_SALT_SIZE 16
-#define KDF_ITERATIONS 100000
+#define KDF_ITERATIONS 25000
 #define KDF_DERIVED_KEY_SIZE 32
 
 void kdf_derive(const uint8_t *password, size_t password_len,

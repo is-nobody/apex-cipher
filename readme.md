@@ -85,7 +85,7 @@ Successfully decrypted: main.dec
 
 - **Random IV:** Unique initialization vector for each encryption operation.
 
-- **KDF with Salt:** 100,000 PBKDF2-HMAC-SHA256 iterations for password-based keys.
+- **KDF with Salt:** 25,000 PBKDF2-HMAC-SHA256 iterations for password-based keys.
 
 - **Constant-Time Comparison:** `ct_memcmp` prevents timing attacks on MAC verification.
 
