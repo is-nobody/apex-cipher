@@ -16,6 +16,7 @@ add_executable(apex-cipher
     source/utils.c
     source/hash.c
     source/hmac.c
+    source/kdf.c
     source/crypto_context.c
 )
 
