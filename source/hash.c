@@ -37,10 +37,10 @@ static void hash_compress(HASH_CTX *ctx, const uint8_t *block) {
                ((uint32_t)block[i * 8 + 1] << 16) |
                ((uint32_t)block[i * 8 + 2] << 8)  |
                ((uint32_t)block[i * 8 + 3])       |
-               ((uint32_t)block[i * 8 + 4] << 20) |
-               ((uint32_t)block[i * 8 + 5] << 12) |
-               ((uint32_t)block[i * 8 + 6] << 4)  |
-               ((uint32_t)block[i * 8 + 7] >> 4);
+               ((uint32_t)block[i * 8 + 4] << 24) |
+               ((uint32_t)block[i * 8 + 5] << 16) |
+               ((uint32_t)block[i * 8 + 6] << 8)  |
+               ((uint32_t)block[i * 8 + 7]);
     }
     
     for (int i = 0; i < 8; i++) {

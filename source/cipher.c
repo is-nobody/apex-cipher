@@ -69,7 +69,8 @@ int cipher_encrypt_file(const char *input_path,
     hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
     hash_update(&hmac_ctx, (uint8_t*)&data_size, sizeof(data_size));
-    
+    hash_update(&hmac_ctx, key, key_len);
+
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
@@ -169,7 +170,8 @@ int cipher_decrypt_file(const char *input_path,
     hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
     hash_update(&hmac_ctx, (uint8_t*)&original_size, sizeof(original_size));
-    
+    hash_update(&hmac_ctx, key, key_len);
+
     uint8_t *chunk_buf = (uint8_t*)malloc(STREAM_CHUNK);
     if (!chunk_buf) { fclose(input); return -1; }
     
