@@ -7,9 +7,22 @@
 static void hash_mix(uint32_t *state) {
     uint8_t *bytes = (uint8_t*)state;
     
-    for (int i = 0; i < 32; i++) {
-        bytes[i] = SBOX[bytes[i]];
-    }
+    bytes[0]  = SBOX[bytes[0]];   bytes[1]  = SBOX[bytes[1]];
+    bytes[2]  = SBOX[bytes[2]];   bytes[3]  = SBOX[bytes[3]];
+    bytes[4]  = SBOX[bytes[4]];   bytes[5]  = SBOX[bytes[5]];
+    bytes[6]  = SBOX[bytes[6]];   bytes[7]  = SBOX[bytes[7]];
+    bytes[8]  = SBOX[bytes[8]];   bytes[9]  = SBOX[bytes[9]];
+    bytes[10] = SBOX[bytes[10]];  bytes[11] = SBOX[bytes[11]];
+    bytes[12] = SBOX[bytes[12]];  bytes[13] = SBOX[bytes[13]];
+    bytes[14] = SBOX[bytes[14]];  bytes[15] = SBOX[bytes[15]];
+    bytes[16] = SBOX[bytes[16]];  bytes[17] = SBOX[bytes[17]];
+    bytes[18] = SBOX[bytes[18]];  bytes[19] = SBOX[bytes[19]];
+    bytes[20] = SBOX[bytes[20]];  bytes[21] = SBOX[bytes[21]];
+    bytes[22] = SBOX[bytes[22]];  bytes[23] = SBOX[bytes[23]];
+    bytes[24] = SBOX[bytes[24]];  bytes[25] = SBOX[bytes[25]];
+    bytes[26] = SBOX[bytes[26]];  bytes[27] = SBOX[bytes[27]];
+    bytes[28] = SBOX[bytes[28]];  bytes[29] = SBOX[bytes[29]];
+    bytes[30] = SBOX[bytes[30]];  bytes[31] = SBOX[bytes[31]];
     
     for (int r = 0; r < HASH_ROUNDS; r++) {
         uint32_t temp[8];
