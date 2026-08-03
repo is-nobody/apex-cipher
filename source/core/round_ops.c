@@ -35,12 +35,18 @@ static void init_gf_tables(void) {
 }
 
 void round_xor_with_key(uint8_t *block, const uint8_t *key) {
-    uint32_t *b = (uint32_t*)block;
-    const uint32_t *k = (const uint32_t*)key;
+    uint32_t b[4];
+    uint32_t k[4];
+    
+    memcpy(b, block, 16);
+    memcpy(k, key, 16);
+    
     b[0] ^= k[0];
     b[1] ^= k[1];
     b[2] ^= k[2];
     b[3] ^= k[3];
+    
+    memcpy(block, b, 16);
 }
 
 void round_apply_sbox(uint8_t *block) {
