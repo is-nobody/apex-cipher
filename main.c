@@ -148,10 +148,8 @@ static int decrypt_file(const char *filename, const char *key_str) {
         printf("\n" COLOR_GREEN "Successfully decrypted: %s\n" COLOR_RESET, output_name);
     } else if (result == -2) {
         printf("\n" COLOR_RED "Wrong key or corrupted data (authentication failed)!\n" COLOR_RESET);
-        remove(output_name);
     } else {
         printf("\n" COLOR_RED "Error: Decryption failed (code: %d)\n" COLOR_RESET, result);
-        remove(output_name);
     }
     
     free(output_name);
