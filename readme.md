@@ -9,19 +9,19 @@
 ---
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Apex Cipher Version](https://img.shields.io/badge/Apex_Cipher-26.07-blue)](https://github.com/is-nobody/apex-cipher)
+[![Apex Cipher Version](https://img.shields.io/badge/Apex_Cipher-26.08-blue)](https://github.com/is-nobody/apex-cipher)
 ![Available](https://img.shields.io/badge/Available-Windows%20%7C%20macOS%20%7C%20Linux-red)
 
 This is the official repository for [Apex](https://github.com/is-nobody/apex-cipher) Cipher.
 
 ## Why Apex Cipher?
-- **Secure by Design:** Implements a 10-round SPN cipher with S-box substitution, key expansion, and CBC mode for robust encryption.
+- **Minimal & Lightweight:** Pure C implementation with zero external dependencies and minimal codebase.
 
-- **Authenticated Encryption:** HMAC-SHA256 ensures data integrity and authenticity, protecting against tampering.
+- **Authenticated Encryption:** HMAC-SHA256 integrity verification detects any tampering or corruption.
 
-- **Simple Interface:** Provides `cipher_encrypt` and `cipher_decrypt` functions with automatic IV generation and padding.
+- **Streaming Support:** Encrypts and decrypts large files in chunks without loading everything into memory.
 
-- **Memory Safety:** Uses `secure_zero` to clear sensitive data from memory after use.
+- **Memory Safe:** Secure zeroization wipes sensitive keys and data immediately after use.
 
 ## Quick Start
 ### Install Apex Cipher
@@ -48,7 +48,7 @@ cmake --build build/ --parallel
 From the REPL, encrypt a message:
 
 ```bash
-Welcome to Apex Cipher 26.07!
+Welcome to Apex Cipher 26.08!
 Max text in REPL: 16384 bytes | Key: up to 64 bytes
 Key: 70b4865d7d09b6cf4207b20cbedcb14bc42847b3af8a2edc0a73687b7ed368f8 (32 bytes)
 

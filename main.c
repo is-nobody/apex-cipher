@@ -157,7 +157,7 @@ static int decrypt_file(const char *filename, const char *key_str) {
 }
 
 static void print_usage(const char *program_name) {
-    printf("Apex Cipher v26.07\n\n");
+    printf("Apex Cipher v26.08\n\n");
     printf("Usage:\n");
     printf("  %s                      - Interactive REPL mode\n", program_name);
     printf("  %s encode <file>        - Encrypt file with random key\n", program_name);

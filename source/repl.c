@@ -26,7 +26,7 @@ void repl_run(void) {
     
     init_key();
 
-    printf("Welcome to Apex Cipher 26.07!\n");
+    printf("Welcome to Apex Cipher 26.08!\n");
     printf("Max text in REPL: %d bytes | Key: up to %d bytes\n", MAX_TEXT, DEFAULT_KEY_SIZE * 2);
     utils_show_key(current_key, current_key_len);
     printf("\n");
