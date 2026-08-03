@@ -81,13 +81,15 @@ Successfully decrypted: main.dec
 
 - **CBC Mode:** Each block XORed with previous ciphertext for semantic security.
 
-- **HMAC-SHA256:** 32-byte authentication tag to verify integrity.
+- **HMAC-SHA256:** 32-byte authentication tag to verify integrity (Encrypt-then-MAC).
 
 - **Random IV:** Unique initialization vector for each encryption operation.
 
-- **Constant-Time Comparison:** `ct_memcmp` prevents timing attacks.
+- **KDF with Salt:** 100,000 PBKDF2-HMAC-SHA256 iterations for password-based keys.
 
-- **Secure Zeroization:** Sensitive data cleared from memory after use.
+- **Constant-Time Comparison:** `ct_memcmp` prevents timing attacks on MAC verification.
+
+- **Secure Zeroization:** Sensitive keys and intermediate state explicitly wiped after use.
 
 ## Getting Help
 See [Issues](https://github.com/is-nobody/apex-cipher/issues) for bug reports and feature requests.
