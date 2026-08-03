@@ -6,12 +6,18 @@
 #include "cipher.h"
 #include "utils.h"
 #include "keygen.h"
-
-#define MAX_TEXT 4096
-#define DEFAULT_KEY_SIZE 32
+#include "crypto_context.h"
 
 static uint8_t current_key[64];
 static size_t current_key_len = DEFAULT_KEY_SIZE;
+static int key_initialized = 0;
+
+static void init_key(void) {
+    if (!key_initialized) {
+        crypto_get_default_key(current_key);
+        key_initialized = 1;
+    }
+}
 
 static size_t read_single_line(uint8_t *buffer, size_t max_len) {
     char line[8192];
@@ -41,7 +47,7 @@ void repl_run(void) {
     size_t enc_len, dec_len;
     int choice;
     
-    keygen_random_key(current_key, DEFAULT_KEY_SIZE);
+    init_key();
 
     printf("Welcome to Apex Cipher!\n");
     printf("Max text: %d bytes | Key: up to 64 bytes\n", MAX_TEXT);
@@ -92,7 +98,7 @@ void repl_run(void) {
             int result = cipher_decrypt(data_buf, byte_count, current_key, current_key_len,
                                        decrypted, &dec_len);
             if (result == -2) {
-                printf("✗ AUTH FAILED! Wrong key or corrupted data!\n\n");
+                printf("Wrong key or corrupted data!\n\n");
             } else if (result != 0) {
                 printf("Decryption failed! (code: %d)\n\n", result);
             } else {
@@ -108,6 +114,7 @@ void repl_run(void) {
             uint8_t new_key[65];
             size_t new_len = 0;
             
+            int c;
             while (new_len < 64 && (c = getchar()) != '\n' && c != EOF) {
                 new_key[new_len++] = (uint8_t)c;
             }
@@ -124,7 +131,7 @@ void repl_run(void) {
             printf("\n");
             
         } else {
-            printf("Use 1-4.\n\n");
+            printf("Use 1-3.\n\n");
         }
     }
 }

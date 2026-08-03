@@ -17,6 +17,7 @@ add_executable(apex-cipher
     source/codecs.c
     source/hash.c
     source/hmac.c
+    source/crypto_context.c
 )
 
 target_include_directories(apex-cipher PRIVATE 

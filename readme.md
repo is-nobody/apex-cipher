@@ -49,9 +49,9 @@ From the REPL, encrypt a message:
 
 ```bash
 Welcome to Apex Cipher!
-Max text: 4096 bytes | Key: up to 64 bytes
+Max text: 16384 bytes | Key: up to 64 bytes
 Cipher: 10-round SPN + CBC + HMAC | Format: Base64
-Key: f48830ae90353c8e60f4005a478e0f0d56a3dd93dc700b7504211f213a0b55be (32 bytes)
+Key: 1e7bf8c41bc9b6935f3c14fc8516ab7cd2ef18b94f07d9cd7ca493807284c85b (32 bytes)
 
 1. Encrypt
 2. Decrypt
@@ -59,7 +59,20 @@ Key: f48830ae90353c8e60f4005a478e0f0d56a3dd93dc700b7504211f213a0b55be (32 bytes)
 > 1
 Enter text: account password: pass911 
 Encrypted (84 bytes):
-NsZgSalqTnCuRZF3ZkDlLhkAAACYO9qcVeuWFwc+7UlxHYzPW6qPTAFzZKKs6tOKW8NpxebRplPKt4hTJc4ZzGokO4LOUxJNHSCp6Ww4yfpTfSJd
+wXsFvxTfOug3VODqiIAFbxoAAABcozU7py+YoP2nOPLDmkpwMCit2G2KFons03eun4//1+UngSIkYvZOvDC4NMhO6q25AkgelY1GClHwbkKINA2R
+```
+
+### File Encryption
+When you need to work with files, use the `encode` and `decode` arguments:
+
+```bash
+none@root:~$ apex-cipher encode main.c mykey123
+Key: 6d796b6579313233 (8 bytes)
+Successfully encrypted: main.enc (10057 bytes)
+
+none@root:~$ apex-cipher decode main.enc mykey123
+Key: 6d796b6579313233 (8 bytes)
+Successfully decrypted: main.dec (7475 bytes)
 ```
 
 ## Security Features

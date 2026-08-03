@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define MAX_TEXT 4096
+#define MAX_TEXT 16384
 #define MAX_ENCRYPTED (16 + sizeof(uint32_t) + ((MAX_TEXT + 15) / 16) * 16 + 32)
 
 int cipher_encrypt(const uint8_t *data, size_t data_len,
