@@ -71,14 +71,30 @@ int cipher_encrypt_file(const char *input_path,
     uint8_t salt[KDF_SALT_SIZE];
     keygen_generate_iv(salt);
     
-    uint8_t derived_key[KDF_DERIVED_KEY_SIZE];
-    kdf_derive(key, key_len, salt, KDF_SALT_SIZE, KDF_ITERATIONS, 
-               derived_key, KDF_DERIVED_KEY_SIZE);
+    uint8_t enc_salt[KDF_SALT_SIZE + 3];
+    memcpy(enc_salt, salt, KDF_SALT_SIZE);
+    enc_salt[KDF_SALT_SIZE] = 'E';
+    enc_salt[KDF_SALT_SIZE + 1] = 'N';
+    enc_salt[KDF_SALT_SIZE + 2] = 'C';
+    
+    uint8_t mac_salt[KDF_SALT_SIZE + 3];
+    memcpy(mac_salt, salt, KDF_SALT_SIZE);
+    mac_salt[KDF_SALT_SIZE] = 'M';
+    mac_salt[KDF_SALT_SIZE + 1] = 'A';
+    mac_salt[KDF_SALT_SIZE + 2] = 'C';
+    
+    uint8_t enc_key[KDF_DERIVED_KEY_SIZE];
+    uint8_t mac_key[KDF_DERIVED_KEY_SIZE];
+    
+    kdf_derive(key, key_len, enc_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS, 
+               enc_key, KDF_DERIVED_KEY_SIZE);
+    kdf_derive(key, key_len, mac_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS, 
+               mac_key, KDF_DERIVED_KEY_SIZE);
     
     fwrite(salt, 1, KDF_SALT_SIZE, output);
     
     uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE];
-    keygen_expand(derived_key, KDF_DERIVED_KEY_SIZE, salt, KDF_SALT_SIZE, round_keys);
+    keygen_expand(enc_key, KDF_DERIVED_KEY_SIZE, salt, KDF_SALT_SIZE, round_keys);
     
     uint8_t iv[BLOCK_SIZE];
     keygen_generate_iv(iv);
@@ -86,7 +102,7 @@ int cipher_encrypt_file(const char *input_path,
     
     uint8_t hmac_key[HMAC_BLOCK_SIZE];
     memset(hmac_key, 0, HMAC_BLOCK_SIZE);
-    memcpy(hmac_key, derived_key, KDF_DERIVED_KEY_SIZE);
+    memcpy(hmac_key, mac_key, KDF_DERIVED_KEY_SIZE);
     
     HASH_CTX hmac_ctx;
     hash_init(&hmac_ctx);
@@ -97,14 +113,15 @@ int cipher_encrypt_file(const char *input_path,
     hash_update(&hmac_ctx, (uint8_t*)&original_size, sizeof(original_size));
     hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
-    hash_update(&hmac_ctx, derived_key, KDF_DERIVED_KEY_SIZE);
+    hash_update(&hmac_ctx, mac_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
     uint8_t *buffer = (uint8_t*)malloc(STREAM_CHUNK);
     if (!buffer) { 
-        secure_zero(derived_key, sizeof(derived_key));
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
         secure_zero(round_keys, sizeof(round_keys));
         fclose(input); fclose(output); return -1; 
     }
@@ -179,7 +196,8 @@ int cipher_encrypt_file(const char *input_path,
     hash_final(&opad_ctx, mac);
     fwrite(mac, 1, HMAC_SIZE, output);
     
-    secure_zero(derived_key, sizeof(derived_key));
+    secure_zero(enc_key, sizeof(enc_key));
+    secure_zero(mac_key, sizeof(mac_key));
     secure_zero(round_keys, sizeof(round_keys));
     secure_zero(prev, sizeof(prev));
     secure_zero(hmac_key, sizeof(hmac_key));
@@ -211,13 +229,30 @@ int cipher_decrypt_file(const char *input_path,
         return -1;
     }
     
-    uint8_t derived_key[KDF_DERIVED_KEY_SIZE];
-    kdf_derive(key, key_len, salt, KDF_SALT_SIZE, KDF_ITERATIONS,
-               derived_key, KDF_DERIVED_KEY_SIZE);
+    uint8_t enc_salt[KDF_SALT_SIZE + 3];
+    memcpy(enc_salt, salt, KDF_SALT_SIZE);
+    enc_salt[KDF_SALT_SIZE] = 'E';
+    enc_salt[KDF_SALT_SIZE + 1] = 'N';
+    enc_salt[KDF_SALT_SIZE + 2] = 'C';
+    
+    uint8_t mac_salt[KDF_SALT_SIZE + 3];
+    memcpy(mac_salt, salt, KDF_SALT_SIZE);
+    mac_salt[KDF_SALT_SIZE] = 'M';
+    mac_salt[KDF_SALT_SIZE + 1] = 'A';
+    mac_salt[KDF_SALT_SIZE + 2] = 'C';
+    
+    uint8_t enc_key[KDF_DERIVED_KEY_SIZE];
+    uint8_t mac_key[KDF_DERIVED_KEY_SIZE];
+    
+    kdf_derive(key, key_len, enc_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS,
+               enc_key, KDF_DERIVED_KEY_SIZE);
+    kdf_derive(key, key_len, mac_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS,
+               mac_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t iv[BLOCK_SIZE];
     if (fread(iv, 1, BLOCK_SIZE, input) != BLOCK_SIZE) {
-        secure_zero(derived_key, sizeof(derived_key));
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
         fclose(input);
         return -1;
     }
@@ -227,7 +262,8 @@ int cipher_decrypt_file(const char *input_path,
     long encrypted_size = total_size - sizeof(original_size) - KDF_SALT_SIZE - BLOCK_SIZE - HMAC_SIZE;
     
     if (encrypted_size <= 0 || encrypted_size % BLOCK_SIZE != 0) {
-        secure_zero(derived_key, sizeof(derived_key));
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
         fclose(input); 
         return -1; 
     }
@@ -235,7 +271,8 @@ int cipher_decrypt_file(const char *input_path,
     uint8_t stored_mac[HMAC_SIZE];
     fseek(input, -(long)HMAC_SIZE, SEEK_END);
     if (fread(stored_mac, 1, HMAC_SIZE, input) != HMAC_SIZE) {
-        secure_zero(derived_key, sizeof(derived_key));
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
         fclose(input); 
         return -1; 
     }
@@ -244,7 +281,7 @@ int cipher_decrypt_file(const char *input_path,
     
     uint8_t hmac_key[HMAC_BLOCK_SIZE];
     memset(hmac_key, 0, HMAC_BLOCK_SIZE);
-    memcpy(hmac_key, derived_key, KDF_DERIVED_KEY_SIZE);
+    memcpy(hmac_key, mac_key, KDF_DERIVED_KEY_SIZE);
     
     HASH_CTX hmac_ctx;
     hash_init(&hmac_ctx);
@@ -255,11 +292,12 @@ int cipher_decrypt_file(const char *input_path,
     hash_update(&hmac_ctx, (uint8_t*)&original_size, sizeof(original_size));
     hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
-    hash_update(&hmac_ctx, derived_key, KDF_DERIVED_KEY_SIZE);
+    hash_update(&hmac_ctx, mac_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t *chunk_buf = (uint8_t*)malloc(STREAM_CHUNK);
     if (!chunk_buf) { 
-        secure_zero(derived_key, sizeof(derived_key));
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
         fclose(input); return -1; 
     }
     
@@ -267,7 +305,8 @@ int cipher_decrypt_file(const char *input_path,
     while (remaining > 0) {
         size_t to_read = (remaining < STREAM_CHUNK) ? (size_t)remaining : STREAM_CHUNK;
         if (fread(chunk_buf, 1, to_read, input) != to_read) {
-            secure_zero(derived_key, sizeof(derived_key));
+            secure_zero(enc_key, sizeof(enc_key));
+            secure_zero(mac_key, sizeof(mac_key));
             free(chunk_buf);
             fclose(input);
             return -1;
@@ -290,7 +329,8 @@ int cipher_decrypt_file(const char *input_path,
     hash_final(&opad_ctx, computed_mac);
     
     if (ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
-        secure_zero(derived_key, sizeof(derived_key));
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
         secure_zero(hmac_key, sizeof(hmac_key));
         free(chunk_buf);
         fclose(input);
@@ -299,13 +339,14 @@ int cipher_decrypt_file(const char *input_path,
     
     FILE *output = fopen(output_path, "wb");
     if (!output) { 
-        secure_zero(derived_key, sizeof(derived_key));
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
         free(chunk_buf); fclose(input); return -1; 
     }
     
     sbox_init();
     uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE];
-    keygen_expand(derived_key, KDF_DERIVED_KEY_SIZE, salt, KDF_SALT_SIZE, round_keys);
+    keygen_expand(enc_key, KDF_DERIVED_KEY_SIZE, salt, KDF_SALT_SIZE, round_keys);
     
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
@@ -345,7 +386,8 @@ int cipher_decrypt_file(const char *input_path,
         
         size_t unpadded_len;
         if (remove_pkcs7_padding(last_decrypted, BLOCK_SIZE, &unpadded_len) != 0) {
-            secure_zero(derived_key, sizeof(derived_key));
+            secure_zero(enc_key, sizeof(enc_key));
+            secure_zero(mac_key, sizeof(mac_key));
             secure_zero(round_keys, sizeof(round_keys));
             free(chunk_buf);
             fclose(input);
@@ -364,7 +406,8 @@ int cipher_decrypt_file(const char *input_path,
     
     if (progress) progress(total_written, original_size);
     
-    secure_zero(derived_key, sizeof(derived_key));
+    secure_zero(enc_key, sizeof(enc_key));
+    secure_zero(mac_key, sizeof(mac_key));
     secure_zero(round_keys, sizeof(round_keys));
     secure_zero(prev, sizeof(prev));
     secure_zero(hmac_key, sizeof(hmac_key));
