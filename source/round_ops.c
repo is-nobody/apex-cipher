@@ -22,6 +22,58 @@ void round_apply_inv_sbox(uint8_t *block) {
     }
 }
 
+void round_shift_rows(uint8_t *block) {
+    uint8_t tmp[BLOCK_SIZE];
+    
+    tmp[0]  = block[0];
+    tmp[4]  = block[4];
+    tmp[8]  = block[8];
+    tmp[12] = block[12];
+    
+    tmp[1]  = block[5];
+    tmp[5]  = block[9];
+    tmp[9]  = block[13];
+    tmp[13] = block[1];
+    
+    tmp[2]  = block[10];
+    tmp[6]  = block[14];
+    tmp[10] = block[2];
+    tmp[14] = block[6];
+    
+    tmp[3]  = block[15];
+    tmp[7]  = block[3];
+    tmp[11] = block[7];
+    tmp[15] = block[11];
+    
+    memcpy(block, tmp, BLOCK_SIZE);
+}
+
+void round_inv_shift_rows(uint8_t *block) {
+    uint8_t tmp[BLOCK_SIZE];
+    
+    tmp[0]  = block[0];
+    tmp[4]  = block[4];
+    tmp[8]  = block[8];
+    tmp[12] = block[12];
+    
+    tmp[1]  = block[13];
+    tmp[5]  = block[1];
+    tmp[9]  = block[5];
+    tmp[13] = block[9];
+    
+    tmp[2]  = block[10];
+    tmp[6]  = block[14];
+    tmp[10] = block[2];
+    tmp[14] = block[6];
+    
+    tmp[3]  = block[7];
+    tmp[7]  = block[11];
+    tmp[11] = block[15];
+    tmp[15] = block[3];
+    
+    memcpy(block, tmp, BLOCK_SIZE);
+}
+
 static uint8_t gf_mul(uint8_t a, uint8_t b) {
     uint8_t p = 0;
     for (int i = 0; i < 8; i++) {
@@ -58,28 +110,6 @@ static void inv_mix_bytes(uint8_t *block) {
         block[base + 2] = gf_mul(13, tmp[base + 0]) ^ gf_mul(9, tmp[base + 1]) ^ gf_mul(14, tmp[base + 2]) ^ gf_mul(11, tmp[base + 3]);
         block[base + 3] = gf_mul(11, tmp[base + 0]) ^ gf_mul(13, tmp[base + 1]) ^ gf_mul(9, tmp[base + 2]) ^ gf_mul(14, tmp[base + 3]);
     }
-}
-
-void round_rotate_left(uint8_t *block, int shift) {
-    if (shift == 0) return;
-    uint32_t *b = (uint32_t*)block;
-    uint32_t tmp[4];
-    int words = shift / 4;
-    for (int i = 0; i < 4; i++) {
-        tmp[i] = b[(i + words) % 4];
-    }
-    memcpy(b, tmp, 16);
-}
-
-void round_rotate_right(uint8_t *block, int shift) {
-    if (shift == 0) return;
-    uint32_t *b = (uint32_t*)block;
-    uint32_t tmp[4];
-    int words = (4 - shift / 4) % 4;
-    for (int i = 0; i < 4; i++) {
-        tmp[i] = b[(i + words) % 4];
-    }
-    memcpy(b, tmp, 16);
 }
 
 void round_mix(uint8_t *block) {

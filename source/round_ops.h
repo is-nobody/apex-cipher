@@ -7,8 +7,8 @@
 void round_xor_with_key(uint8_t *block, const uint8_t *key);
 void round_apply_sbox(uint8_t *block);
 void round_apply_inv_sbox(uint8_t *block);
-void round_rotate_left(uint8_t *block, int shift);
-void round_rotate_right(uint8_t *block, int shift);
+void round_shift_rows(uint8_t *block);
+void round_inv_shift_rows(uint8_t *block);
 void round_mix(uint8_t *block);
 void round_inv_mix(uint8_t *block);
 
