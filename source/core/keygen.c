@@ -95,7 +95,7 @@ void keygen_expand(const uint8_t *master_key, size_t key_len,
         memcpy(round_keys[r], round_material, BLOCK_SIZE);
         
         for (int i = 0; i < BLOCK_SIZE; i++) {
-            round_keys[r][i] = SBOX[round_keys[r][i] ^ round_material[16 + (i % 16)]];
+            round_keys[r][i] = HASH_SBOX[round_keys[r][i] ^ round_material[16 + (i % 16)]];
         }
     }
     

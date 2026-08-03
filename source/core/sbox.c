@@ -36,12 +36,16 @@ const uint8_t SBOX[256] = {
 };
 
 uint8_t INV_SBOX[256];
+uint8_t HASH_SBOX[256];
 static int initialized = 0;
 
 void sbox_init(void) {
     if (initialized) return;
     for (int i = 0; i < 256; i++) {
         INV_SBOX[SBOX[i]] = i;
+    }
+    for (int i = 0; i < 256; i++) {
+        HASH_SBOX[i] = SBOX[(i + 0x5A) & 0xFF] ^ 0xA5;
     }
     initialized = 1;
 }

@@ -7,6 +7,7 @@
 
 extern const uint8_t SBOX[256];
 extern uint8_t INV_SBOX[256];
+extern uint8_t HASH_SBOX[256];
 
 void sbox_init(void);
 
