@@ -54,11 +54,11 @@ static int secure_random(uint8_t *buf, size_t len) {
 }
 
 void keygen_expand(const uint8_t *master_key, size_t key_len,
-                   uint8_t round_keys[ROUNDS][BLOCK_SIZE]) {
+                   uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE]) {
     uint8_t seed[32];
     memset(seed, 0, sizeof(seed));
     
-    for (int r = 0; r < ROUNDS; r++) {
+    for (int r = 0; r <= ROUNDS; r++) {
         seed[0] = (uint8_t)(r & 0xFF);
         seed[1] = (uint8_t)((r >> 8) & 0xFF);
         seed[2] = 0x52;

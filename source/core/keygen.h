@@ -1,3 +1,4 @@
+// source/core/keygen.h
 #ifndef KEYGEN_H
 #define KEYGEN_H
 
@@ -10,7 +11,7 @@
 #define DEFAULT_KEY_SIZE 32
 
 void keygen_expand(const uint8_t *master_key, size_t key_len,
-                   uint8_t round_keys[ROUNDS][BLOCK_SIZE]);
+                   uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE]);
 
 void keygen_generate_iv(uint8_t iv[BLOCK_SIZE]);
 
