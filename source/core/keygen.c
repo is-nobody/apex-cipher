@@ -54,21 +54,43 @@ static int secure_random(uint8_t *buf, size_t len) {
 }
 
 void keygen_expand(const uint8_t *master_key, size_t key_len,
+                   const uint8_t *salt, size_t salt_len,
                    uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE]) {
+    
     uint8_t seed[32];
+    uint8_t round_material[32];
     memset(seed, 0, sizeof(seed));
     
+    size_t salt_mix = (salt_len < 24) ? salt_len : 24;
+    memcpy(seed, salt, salt_mix);
+    
+    if (salt_len < 24) {
+        uint8_t expanded[32];
+        hmac_compute(master_key, key_len, salt, salt_len, expanded);
+        for (size_t i = salt_mix; i < 24; i++) {
+            seed[i] = expanded[i];
+        }
+    }
+    
+    seed[24] = 0x52; // 'R'
+    seed[25] = 0x4B; // 'K'
+    seed[26] = 0x45; // 'E'
+    seed[27] = 0x59; // 'Y'
+    seed[28] = (uint8_t)(key_len & 0xFF);
+    seed[29] = (uint8_t)((key_len >> 8) & 0xFF);
+    seed[30] = 0x00; // reserved
+    seed[31] = 0x00; // reserved
+    
     for (int r = 0; r <= ROUNDS; r++) {
-        seed[0] = (uint8_t)(r & 0xFF);
-        seed[1] = (uint8_t)((r >> 8) & 0xFF);
-        seed[2] = 0x52;
-        seed[3] = 0x4B;
+        uint8_t round_seed[32];
+        memcpy(round_seed, seed, 32);
         
-        seed[4] = (uint8_t)(key_len & 0xFF);
-        seed[5] = (uint8_t)((key_len >> 8) & 0xFF);
+        round_seed[0] ^= (uint8_t)(r & 0xFF);
+        round_seed[8] ^= (uint8_t)((r >> 8) & 0xFF);
+        round_seed[16] ^= (uint8_t)(r & 0xFF);
+        round_seed[24] ^= (uint8_t)((r >> 8) & 0xFF);
         
-        uint8_t round_material[32];
-        hmac_compute(master_key, key_len, seed, 6, round_material);
+        hmac_compute(master_key, key_len, round_seed, 32, round_material);
         
         memcpy(round_keys[r], round_material, BLOCK_SIZE);
         
@@ -76,6 +98,11 @@ void keygen_expand(const uint8_t *master_key, size_t key_len,
             round_keys[r][i] = SBOX[round_keys[r][i] ^ round_material[16 + (i % 16)]];
         }
     }
+    
+    volatile uint8_t *vp = seed;
+    for (size_t i = 0; i < sizeof(seed); i++) vp[i] = 0;
+    vp = round_material;
+    for (size_t i = 0; i < sizeof(round_material); i++) vp[i] = 0;
 }
 
 void keygen_generate_iv(uint8_t iv[BLOCK_SIZE]) {

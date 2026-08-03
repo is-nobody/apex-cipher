@@ -51,7 +51,7 @@ int cipher_encrypt_file(const char *input_path,
     fwrite(salt, 1, KDF_SALT_SIZE, output);
     
     uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE];
-    keygen_expand(derived_key, KDF_DERIVED_KEY_SIZE, round_keys);
+    keygen_expand(derived_key, KDF_DERIVED_KEY_SIZE, salt, KDF_SALT_SIZE, round_keys);
     
     uint8_t iv[BLOCK_SIZE];
     keygen_generate_iv(iv);
@@ -235,7 +235,7 @@ int cipher_decrypt_file(const char *input_path,
     
     sbox_init();
     uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE];
-    keygen_expand(derived_key, KDF_DERIVED_KEY_SIZE, round_keys);
+    keygen_expand(derived_key, KDF_DERIVED_KEY_SIZE, salt, KDF_SALT_SIZE, round_keys);
     
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
