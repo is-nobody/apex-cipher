@@ -7,22 +7,25 @@ set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native -funroll-loops")
 
 add_executable(apex-cipher
     main.c
-    source/repl.c
-    source/sbox.c
-    source/keygen.c
-    source/round_ops.c
-    source/encrypt_decrypt.c
-    source/cipher.c
-    source/utils.c
-    source/hash.c
-    source/hmac.c
-    source/kdf.c
-    source/crypto_context.c
+    source/core/cipher.c
+    source/core/encrypt_decrypt.c
+    source/core/round_ops.c
+    source/core/sbox.c
+    source/core/keygen.c
+    source/core/hash.c
+    source/core/hmac.c
+    source/core/kdf.c
+    source/core/crypto_context.c
+    source/cli/repl.c
+    source/cli/args.c
+    source/utils/utils.c
 )
 
 target_include_directories(apex-cipher PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/source
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/cli
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/utils
 )
 
 #[[
