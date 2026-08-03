@@ -44,8 +44,6 @@ int cipher_encrypt(const uint8_t *data, size_t data_len,
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
-    uint8_t block[BLOCK_SIZE];
-
     for (size_t offset = 0; offset < padded_len; offset += BLOCK_SIZE) {
         uint8_t block[BLOCK_SIZE] = {0};
         size_t chunk = (offset + BLOCK_SIZE <= data_len) ? BLOCK_SIZE : (data_len - offset);
@@ -60,10 +58,9 @@ int cipher_encrypt(const uint8_t *data, size_t data_len,
         memcpy(ciphertext + pos, block, BLOCK_SIZE);
         pos += BLOCK_SIZE;
     }
-    
-    size_t ct_len = pos - encrypt_start;
+
     uint8_t mac[HMAC_SIZE];
-    hmac_compute(key, key_len, ciphertext + encrypt_start, ct_len, mac);
+    hmac_compute(key, key_len, ciphertext, pos, mac);
     memcpy(ciphertext + pos, mac, HMAC_SIZE);
     pos += HMAC_SIZE;
     
@@ -71,7 +68,6 @@ int cipher_encrypt(const uint8_t *data, size_t data_len,
     
     secure_zero(round_keys, sizeof(round_keys));
     secure_zero(prev, sizeof(prev));
-    secure_zero(block, sizeof(block));
     
     return 0;
 }
@@ -84,29 +80,33 @@ int cipher_decrypt(const uint8_t *ciphertext, size_t len,
     if (len < BLOCK_SIZE + sizeof(uint32_t) + BLOCK_SIZE + HMAC_SIZE) return -1;
     if (len > MAX_ENCRYPTED) return -1;
     
+    size_t mac_offset = len - HMAC_SIZE;
+    uint8_t computed_mac[HMAC_SIZE];
+    hmac_compute(key, key_len, ciphertext, mac_offset, computed_mac);
+    
+    const uint8_t *stored_mac = ciphertext + mac_offset;
+    
+    if (ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
+        secure_zero(computed_mac, sizeof(computed_mac));
+        return -2;
+    }
+    secure_zero(computed_mac, sizeof(computed_mac));
+    
+    uint8_t iv[BLOCK_SIZE];
+    memcpy(iv, ciphertext, BLOCK_SIZE);
+    
     uint32_t data_len;
     memcpy(&data_len, ciphertext + BLOCK_SIZE, sizeof(data_len));
     
     if (data_len == 0 || data_len > MAX_TEXT) return -1;
     
-    size_t min_len = BLOCK_SIZE + sizeof(uint32_t) + 
-                    ((data_len + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE + HMAC_SIZE;
-    if (len < min_len) return -1;
-
-    size_t actual_ct_len = len - BLOCK_SIZE - sizeof(uint32_t) - HMAC_SIZE;
-
+    size_t expected_encrypted = ((data_len + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE;
+    size_t expected_len = BLOCK_SIZE + sizeof(uint32_t) + expected_encrypted + HMAC_SIZE;
+    
+    if (len != expected_len) return -1;
+    
     const uint8_t *enc_data = ciphertext + BLOCK_SIZE + sizeof(uint32_t);
-    uint8_t computed_mac[HMAC_SIZE];
-    hmac_compute(key, key_len, enc_data, actual_ct_len, computed_mac);
-    
-    const uint8_t *stored_mac = ciphertext + len - HMAC_SIZE;
-    
-    if (ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
-        return -2;
-    }
-    
-    uint8_t iv[BLOCK_SIZE];
-    memcpy(iv, ciphertext, BLOCK_SIZE);
+    size_t actual_ct_len = len - BLOCK_SIZE - sizeof(uint32_t) - HMAC_SIZE;
     
     uint8_t round_keys[ROUNDS][BLOCK_SIZE];
     keygen_expand(key, key_len, round_keys);
@@ -114,8 +114,6 @@ int cipher_decrypt(const uint8_t *ciphertext, size_t len,
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
-    uint8_t decrypted[BLOCK_SIZE];
-
     *out_len = 0;
     
     for (size_t offset = 0; offset < actual_ct_len && *out_len < data_len; offset += BLOCK_SIZE) {
@@ -137,10 +135,7 @@ int cipher_decrypt(const uint8_t *ciphertext, size_t len,
     
     secure_zero(round_keys, sizeof(round_keys));
     secure_zero(prev, sizeof(prev));
-    secure_zero(computed_mac, sizeof(computed_mac));
-    if (*out_len == data_len) {
-        secure_zero(decrypted, sizeof(decrypted));
-    }
+    secure_zero(iv, sizeof(iv));
     
     return (*out_len == data_len) ? 0 : -1;
 }
