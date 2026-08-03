@@ -27,7 +27,7 @@ This is the official repository for [Apex](https://github.com/is-nobody/apex-cip
 ### Install Apex Cipher
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/apex-cipher.git
+git clone https://github.com/is-nobody/apex-cipher.git
 cd apex-cipher
 ```
 
