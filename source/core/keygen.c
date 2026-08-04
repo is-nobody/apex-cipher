@@ -82,10 +82,10 @@ void keygen_expand(const uint8_t *master_key, size_t key_len,
         uint8_t round_seed[32];
         memcpy(round_seed, seed, 32);
         
-        round_seed[0] ^= (uint8_t)(r & 0xFF);
-        round_seed[8] ^= (uint8_t)((r >> 8) & 0xFF);
-        round_seed[16] ^= (uint8_t)(r & 0xFF);
-        round_seed[24] ^= (uint8_t)((r >> 8) & 0xFF);
+        uint8_t r_byte = (uint8_t)(r & 0xFF);
+        for (int i = 0; i < 32; i++) {
+            round_seed[i] ^= r_byte ^ (uint8_t)(i * 0x1B);
+        }
         
         hmac_compute(master_key, key_len, round_seed, 32, round_material);
         
