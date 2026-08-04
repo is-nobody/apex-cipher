@@ -43,9 +43,6 @@ int cipher_ctx_init_encrypt(CipherContext *ctx,
     
     keygen_expand(ctx->enc_key, KDF_DERIVED_KEY_SIZE, ctx->round_keys);
     
-    memset(ctx->hmac_key, 0, HMAC_BLOCK_SIZE);
-    memcpy(ctx->hmac_key, ctx->mac_key, KDF_DERIVED_KEY_SIZE);
-    
     return 0;
 }
 
@@ -57,17 +54,12 @@ int cipher_ctx_init_decrypt(CipherContext *ctx,
 
 void cipher_cbc_encrypt_block(uint8_t *block,
                               uint8_t *prev,
-                              CipherContext *ctx,
-                              HASH_CTX *hmac_ctx) {
+                              CipherContext *ctx) {
     for (int i = 0; i < BLOCK_SIZE; i++) {
         block[i] ^= prev[i];
     }
     
     encrypt_block(block, ctx->round_keys);
-    
-    if (hmac_ctx) {
-        hash_update(hmac_ctx, block, BLOCK_SIZE);
-    }
     
     memcpy(prev, block, BLOCK_SIZE);
 }
@@ -112,51 +104,8 @@ int cipher_remove_pkcs7_padding(uint8_t *block, size_t block_size, size_t *data_
     return 0;
 }
 
-void cipher_hmac_init(HASH_CTX *ctx, CipherContext *cipher_ctx) {
-    hash_init(ctx);
-    
-    uint8_t ipad[HMAC_BLOCK_SIZE];
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++) {
-        ipad[i] = cipher_ctx->hmac_key[i] ^ 0x36;
-    }
-    hash_update(ctx, ipad, HMAC_BLOCK_SIZE);
-}
-
-void cipher_hmac_update_header(HASH_CTX *ctx,
-                               const uint8_t *size_bytes,
-                               const uint8_t *salt,
-                               const uint8_t *iv) {
-    hash_update(ctx, size_bytes, 8);
-    hash_update(ctx, salt, KDF_SALT_SIZE);
-    hash_update(ctx, iv, BLOCK_SIZE);
-}
-
-void cipher_hmac_update_data(HASH_CTX *ctx, const uint8_t *data, size_t len) {
-    hash_update(ctx, data, len);
-}
-
-void cipher_hmac_final(HASH_CTX *ctx, CipherContext *cipher_ctx, uint8_t *mac) {
-    uint8_t inner_hash[HASH_DIGEST_SIZE];
-    hash_final(ctx, inner_hash);
-    
-    HASH_CTX opad_ctx;
-    hash_init(&opad_ctx);
-    
-    uint8_t opad[HMAC_BLOCK_SIZE];
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++) {
-        opad[i] = cipher_ctx->hmac_key[i] ^ 0x5c;
-    }
-    
-    hash_update(&opad_ctx, opad, HMAC_BLOCK_SIZE);
-    hash_update(&opad_ctx, inner_hash, HASH_DIGEST_SIZE);
-    hash_final(&opad_ctx, mac);
-    
-    cipher_secure_zero(inner_hash, sizeof(inner_hash));
-}
-
 void cipher_ctx_cleanup(CipherContext *ctx) {
     cipher_secure_zero(ctx->enc_key, sizeof(ctx->enc_key));
     cipher_secure_zero(ctx->mac_key, sizeof(ctx->mac_key));
     cipher_secure_zero(ctx->round_keys, sizeof(ctx->round_keys));
-    cipher_secure_zero(ctx->hmac_key, sizeof(ctx->hmac_key));
 }

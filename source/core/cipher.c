@@ -65,9 +65,15 @@ int cipher_encrypt_file(const char *input_path,
         return -1;
     }
     
-    HASH_CTX hmac_ctx;
-    cipher_hmac_init(&hmac_ctx, &ctx);
-    cipher_hmac_update_header(&hmac_ctx, size_bytes, salt, iv);
+    size_t encrypted_capacity = (size_t)file_size + BLOCK_SIZE;
+    uint8_t *encrypted_data = (uint8_t*)malloc(encrypted_capacity);
+    if (!encrypted_data) {
+        cipher_ctx_cleanup(&ctx);
+        fclose(input);
+        fclose(output);
+        return -1;
+    }
+    size_t encrypted_len = 0;
     
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
@@ -75,6 +81,7 @@ int cipher_encrypt_file(const char *input_path,
     uint8_t *buffer = (uint8_t*)malloc(STREAM_CHUNK);
     if (!buffer) { 
         cipher_ctx_cleanup(&ctx);
+        free(encrypted_data);
         fclose(input); fclose(output); return -1; 
     }
     
@@ -95,9 +102,13 @@ int cipher_encrypt_file(const char *input_path,
             processed += to_copy;
             
             if (pending_len == BLOCK_SIZE) {
-                cipher_cbc_encrypt_block(pending_block, prev, &ctx, &hmac_ctx);
+                cipher_cbc_encrypt_block(pending_block, prev, &ctx);
+                memcpy(encrypted_data + encrypted_len, pending_block, BLOCK_SIZE);
+                encrypted_len += BLOCK_SIZE;
+                
                 if (fwrite(pending_block, 1, BLOCK_SIZE, output) != BLOCK_SIZE) {
                     cipher_ctx_cleanup(&ctx);
+                    free(encrypted_data);
                     free(buffer);
                     fclose(input);
                     fclose(output);
@@ -111,9 +122,13 @@ int cipher_encrypt_file(const char *input_path,
             uint8_t block[BLOCK_SIZE];
             memcpy(block, buffer + processed, BLOCK_SIZE);
             
-            cipher_cbc_encrypt_block(block, prev, &ctx, &hmac_ctx);
+            cipher_cbc_encrypt_block(block, prev, &ctx);
+            memcpy(encrypted_data + encrypted_len, block, BLOCK_SIZE);
+            encrypted_len += BLOCK_SIZE;
+            
             if (fwrite(block, 1, BLOCK_SIZE, output) != BLOCK_SIZE) {
                 cipher_ctx_cleanup(&ctx);
+                free(encrypted_data);
                 free(buffer);
                 fclose(input);
                 fclose(output);
@@ -135,36 +150,44 @@ int cipher_encrypt_file(const char *input_path,
     memcpy(final_block, pending_block, pending_len);
     cipher_add_pkcs7_padding(final_block, pending_len, BLOCK_SIZE);
     
-    cipher_cbc_encrypt_block(final_block, prev, &ctx, &hmac_ctx);
+    cipher_cbc_encrypt_block(final_block, prev, &ctx);
+    memcpy(encrypted_data + encrypted_len, final_block, BLOCK_SIZE);
+    encrypted_len += BLOCK_SIZE;
 
     if (fwrite(final_block, 1, BLOCK_SIZE, output) != BLOCK_SIZE) {
         cipher_ctx_cleanup(&ctx);
         cipher_secure_zero(prev, sizeof(prev));
         cipher_secure_zero(pending_block, sizeof(pending_block));
+        free(encrypted_data);
         free(buffer);
         fclose(input);
         fclose(output);
         return -1;
     }
     
-    uint8_t mac[HMAC_SIZE];
-    cipher_hmac_final(&hmac_ctx, &ctx, mac);
-
-    if (fwrite(mac, 1, HMAC_SIZE, output) != HMAC_SIZE) {
-        cipher_ctx_cleanup(&ctx);
-        cipher_secure_zero(prev, sizeof(prev));
-        cipher_secure_zero(pending_block, sizeof(pending_block));
-        cipher_secure_zero(final_block, sizeof(final_block));
-        free(buffer);
-        fclose(input);
-        fclose(output);
-        return -1;
+    size_t header_size = 8 + KDF_SALT_SIZE + BLOCK_SIZE;
+    size_t hmac_data_size = header_size + encrypted_len;
+    uint8_t *hmac_data = (uint8_t*)malloc(hmac_data_size);
+    if (hmac_data) {
+        memcpy(hmac_data, size_bytes, 8);
+        memcpy(hmac_data + 8, salt, KDF_SALT_SIZE);
+        memcpy(hmac_data + 8 + KDF_SALT_SIZE, iv, BLOCK_SIZE);
+        memcpy(hmac_data + header_size, encrypted_data, encrypted_len);
+        
+        uint8_t mac[HMAC_SIZE];
+        hmac_compute(ctx.mac_key, KDF_DERIVED_KEY_SIZE, hmac_data, hmac_data_size, mac);
+        
+        fwrite(mac, 1, HMAC_SIZE, output);
+        
+        cipher_secure_zero(hmac_data, hmac_data_size);
+        free(hmac_data);
     }
     
     cipher_ctx_cleanup(&ctx);
     cipher_secure_zero(prev, sizeof(prev));
     cipher_secure_zero(pending_block, sizeof(pending_block));
     cipher_secure_zero(final_block, sizeof(final_block));
+    free(encrypted_data);
     free(buffer);
     fclose(input);
     fclose(output);
@@ -228,31 +251,42 @@ int cipher_decrypt_file(const char *input_path,
     
     fseek(input, sizeof(uint64_t) + KDF_SALT_SIZE + BLOCK_SIZE, SEEK_SET);
     
-    HASH_CTX hmac_ctx;
-    cipher_hmac_init(&hmac_ctx, &ctx);
-    cipher_hmac_update_header(&hmac_ctx, size_bytes, salt, iv);
-    
     uint8_t *chunk_buf = (uint8_t*)malloc(STREAM_CHUNK);
     if (!chunk_buf) { 
         cipher_ctx_cleanup(&ctx);
         fclose(input); return -1; 
     }
     
+    size_t header_size = 8 + KDF_SALT_SIZE + BLOCK_SIZE;
+    size_t hmac_data_size = header_size + (size_t)encrypted_size;
+    uint8_t *hmac_data = (uint8_t*)malloc(hmac_data_size);
+    if (!hmac_data) {
+        cipher_ctx_cleanup(&ctx);
+        free(chunk_buf);
+        fclose(input);
+        return -1;
+    }
+    
+    memcpy(hmac_data, size_bytes, 8);
+    memcpy(hmac_data + 8, salt, KDF_SALT_SIZE);
+    memcpy(hmac_data + 8 + KDF_SALT_SIZE, iv, BLOCK_SIZE);
+    
+    size_t offset = header_size;
     long remaining = encrypted_size;
     while (remaining > 0) {
         size_t to_read = (remaining < STREAM_CHUNK) ? (size_t)remaining : STREAM_CHUNK;
-        if (fread(chunk_buf, 1, to_read, input) != to_read) {
-            cipher_ctx_cleanup(&ctx);
-            free(chunk_buf);
-            fclose(input);
-            return -1;
-        }
-        hash_update(&hmac_ctx, chunk_buf, to_read);
-        remaining -= to_read;
+        size_t read_now = fread(chunk_buf, 1, to_read, input);
+        if (read_now == 0) break;
+        memcpy(hmac_data + offset, chunk_buf, read_now);
+        offset += read_now;
+        remaining -= read_now;
     }
     
     uint8_t computed_mac[HMAC_SIZE];
-    cipher_hmac_final(&hmac_ctx, &ctx, computed_mac);
+    hmac_compute(ctx.mac_key, KDF_DERIVED_KEY_SIZE, hmac_data, hmac_data_size, computed_mac);
+    
+    cipher_secure_zero(hmac_data, hmac_data_size);
+    free(hmac_data);
     
     if (cipher_ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
         cipher_ctx_cleanup(&ctx);
