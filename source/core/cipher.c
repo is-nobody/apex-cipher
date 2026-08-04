@@ -75,8 +75,13 @@ int cipher_encrypt_file(const char *input_path,
     size_bytes[5] = (uint8_t)(original_size >> 16);
     size_bytes[6] = (uint8_t)(original_size >> 8);
     size_bytes[7] = (uint8_t)(original_size);
-    fwrite(size_bytes, 1, sizeof(size_bytes), output);
-    
+
+    if (fwrite(size_bytes, 1, sizeof(size_bytes), output) != sizeof(size_bytes)) {
+        fclose(input);
+        fclose(output);
+        return -1;
+    }
+
     uint8_t salt[KDF_SALT_SIZE];
     keygen_generate_iv(salt);
     
@@ -100,14 +105,27 @@ int cipher_encrypt_file(const char *input_path,
     kdf_derive(key, key_len, mac_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS, 
                mac_key, KDF_DERIVED_KEY_SIZE);
     
-    fwrite(salt, 1, KDF_SALT_SIZE, output);
+    if (fwrite(salt, 1, KDF_SALT_SIZE, output) != KDF_SALT_SIZE) {
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
+        fclose(input);
+        fclose(output);
+        return -1;
+    }
     
     uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE];
     keygen_expand(enc_key, KDF_DERIVED_KEY_SIZE, salt, KDF_SALT_SIZE, round_keys);
     
     uint8_t iv[BLOCK_SIZE];
     keygen_generate_iv(iv);
-    fwrite(iv, 1, BLOCK_SIZE, output);
+
+    if (fwrite(iv, 1, BLOCK_SIZE, output) != BLOCK_SIZE) {
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
+        fclose(input);
+        fclose(output);
+        return -1;
+    }
     
     uint8_t hmac_key[HMAC_BLOCK_SIZE];
     memset(hmac_key, 0, HMAC_BLOCK_SIZE);
@@ -155,7 +173,15 @@ int cipher_encrypt_file(const char *input_path,
                 for (int i = 0; i < BLOCK_SIZE; i++) pending_block[i] ^= prev[i];
                 encrypt_block(pending_block, round_keys);
                 hash_update(&hmac_ctx, pending_block, BLOCK_SIZE);
-                fwrite(pending_block, 1, BLOCK_SIZE, output);
+                if (fwrite(pending_block, 1, BLOCK_SIZE, output) != BLOCK_SIZE) {
+                    secure_zero(enc_key, sizeof(enc_key));
+                    secure_zero(mac_key, sizeof(mac_key));
+                    secure_zero(round_keys, sizeof(round_keys));
+                    free(buffer);
+                    fclose(input);
+                    fclose(output);
+                    return -1;
+                }
                 memcpy(prev, pending_block, BLOCK_SIZE);
                 pending_len = 0;
             }
@@ -168,7 +194,15 @@ int cipher_encrypt_file(const char *input_path,
             for (int i = 0; i < BLOCK_SIZE; i++) block[i] ^= prev[i];
             encrypt_block(block, round_keys);
             hash_update(&hmac_ctx, block, BLOCK_SIZE);
-            fwrite(block, 1, BLOCK_SIZE, output);
+            if (fwrite(block, 1, BLOCK_SIZE, output) != BLOCK_SIZE) {
+                secure_zero(enc_key, sizeof(enc_key));
+                secure_zero(mac_key, sizeof(mac_key));
+                secure_zero(round_keys, sizeof(round_keys));
+                free(buffer);
+                fclose(input);
+                fclose(output);
+                return -1;
+            }
             memcpy(prev, block, BLOCK_SIZE);
             processed += BLOCK_SIZE;
         }
@@ -189,7 +223,19 @@ int cipher_encrypt_file(const char *input_path,
     for (int i = 0; i < BLOCK_SIZE; i++) final_block[i] ^= prev[i];
     encrypt_block(final_block, round_keys);
     hash_update(&hmac_ctx, final_block, BLOCK_SIZE);
-    fwrite(final_block, 1, BLOCK_SIZE, output);
+
+    if (fwrite(final_block, 1, BLOCK_SIZE, output) != BLOCK_SIZE) {
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
+        secure_zero(round_keys, sizeof(round_keys));
+        secure_zero(prev, sizeof(prev));
+        secure_zero(hmac_key, sizeof(hmac_key));
+        secure_zero(pending_block, sizeof(pending_block));
+        free(buffer);
+        fclose(input);
+        fclose(output);
+        return -1;
+    }
     
     uint8_t inner_hash[HASH_DIGEST_SIZE];
     hash_final(&hmac_ctx, inner_hash);
@@ -203,7 +249,20 @@ int cipher_encrypt_file(const char *input_path,
     
     uint8_t mac[HMAC_SIZE];
     hash_final(&opad_ctx, mac);
-    fwrite(mac, 1, HMAC_SIZE, output);
+
+    if (fwrite(mac, 1, HMAC_SIZE, output) != HMAC_SIZE) {
+        secure_zero(enc_key, sizeof(enc_key));
+        secure_zero(mac_key, sizeof(mac_key));
+        secure_zero(round_keys, sizeof(round_keys));
+        secure_zero(prev, sizeof(prev));
+        secure_zero(hmac_key, sizeof(hmac_key));
+        secure_zero(pending_block, sizeof(pending_block));
+        secure_zero(final_block, sizeof(final_block));
+        free(buffer);
+        fclose(input);
+        fclose(output);
+        return -1;
+    }
     
     secure_zero(enc_key, sizeof(enc_key));
     secure_zero(mac_key, sizeof(mac_key));
@@ -391,7 +450,16 @@ int cipher_decrypt_file(const char *input_path,
             for (int j = 0; j < BLOCK_SIZE; j++) block[j] = temp[j] ^ prev[j];
             memcpy(prev, chunk_buf + i, BLOCK_SIZE);
             
-            fwrite(block, 1, BLOCK_SIZE, output);
+            if (fwrite(block, 1, BLOCK_SIZE, output) != BLOCK_SIZE) {
+                secure_zero(enc_key, sizeof(enc_key));
+                secure_zero(mac_key, sizeof(mac_key));
+                secure_zero(round_keys, sizeof(round_keys));
+                secure_zero(hmac_key, sizeof(hmac_key));
+                free(chunk_buf);
+                fclose(input);
+                fclose(output);
+                return -1;
+            }
             total_written += BLOCK_SIZE;
         }
         remaining -= read_bytes;
@@ -420,7 +488,17 @@ int cipher_decrypt_file(const char *input_path,
             size_t remaining_to_write = original_size - total_written;
             if (unpadded_len > remaining_to_write) unpadded_len = remaining_to_write;
             
-            fwrite(last_decrypted, 1, unpadded_len, output);
+            if (fwrite(last_decrypted, 1, unpadded_len, output) != unpadded_len) {
+                secure_zero(enc_key, sizeof(enc_key));
+                secure_zero(mac_key, sizeof(mac_key));
+                secure_zero(round_keys, sizeof(round_keys));
+                secure_zero(hmac_key, sizeof(hmac_key));
+                secure_zero(last_encrypted, sizeof(last_encrypted));
+                free(chunk_buf);
+                fclose(input);
+                fclose(output);
+                return -1;
+            }
             total_written += unpadded_len;
         }
     }
