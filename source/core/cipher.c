@@ -140,7 +140,6 @@ int cipher_encrypt_file(const char *input_path,
     hash_update(&hmac_ctx, size_bytes, sizeof(size_bytes));
     hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
-    hash_update(&hmac_ctx, mac_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
@@ -368,7 +367,6 @@ int cipher_decrypt_file(const char *input_path,
     hash_update(&hmac_ctx, size_bytes, sizeof(size_bytes));
     hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
     hash_update(&hmac_ctx, iv, BLOCK_SIZE);
-    hash_update(&hmac_ctx, mac_key, KDF_DERIVED_KEY_SIZE);
     
     uint8_t *chunk_buf = (uint8_t*)malloc(STREAM_CHUNK);
     if (!chunk_buf) { 
