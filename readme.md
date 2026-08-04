@@ -85,7 +85,7 @@ Successfully decrypted: main.dec
 
 - **Random Salt & IV:** Unique 16-byte KDF salt and 16-byte initialization vector for each encryption operation.
 
-- **PBKDF2-HMAC-SHA256:** 25,000 iterations with unique salt for password-based key derivation.
+- **PBKDF2-HMAC-SHA256:** 100,000 iterations with unique salt for password-based key derivation.
 
 - **Original Size Preservation:** File size stored in header and authenticated, preventing truncation attacks.
 
