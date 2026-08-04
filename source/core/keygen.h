@@ -6,8 +6,13 @@
 #include <time.h>
 #include "sbox.h"
 
-#define ROUNDS 10
+#define ROUNDS 14
 #define DEFAULT_KEY_SIZE 32
+#define MIN_KEY_SIZE 32
+
+#define NK 8
+#define NR 14
+#define NB 4
 
 void keygen_expand(const uint8_t *master_key, size_t key_len,
                    uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE]);

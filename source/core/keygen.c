@@ -4,6 +4,7 @@
 #include <time.h>
 #include "keygen.h"
 #include "hmac.h"
+#include "cipher_ops.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -16,12 +17,8 @@
 #include <errno.h>
 #endif
 
-#define NK 4
-#define NR 10
-#define NB 4
-
-static const uint8_t Rcon[11] = {
-    0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36
+static const uint8_t Rcon[15] = {
+    0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36, 0x6C, 0xD8, 0xAB, 0x4D
 };
 
 static uint32_t SubWord(uint32_t word) {
@@ -75,30 +72,33 @@ static int secure_random(uint8_t *buf, size_t len) {
 void keygen_expand(const uint8_t *master_key, size_t key_len,
                    uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE]) {
     
-    uint8_t key128[16];
-    if (key_len >= 16) {
-        memcpy(key128, master_key, 16);
+    uint8_t key256[32];
+    
+    if (key_len >= 32) {
+        memcpy(key256, master_key, 32);
     } else {
-        memcpy(key128, master_key, key_len);
-        memset(key128 + key_len, 0, 16 - key_len);
+        uint8_t salt[] = "apex-key-expansion-salt-v1";
+        hmac_compute(master_key, key_len, salt, sizeof(salt) - 1, key256);
     }
     
     uint32_t W[NB * (NR + 1)];
     uint32_t temp;
     
-    for (int i = 0; i < NK; i++) {
-        W[i] = ((uint32_t)key128[4*i]   << 24) |
-               ((uint32_t)key128[4*i+1] << 16) |
-               ((uint32_t)key128[4*i+2] << 8)  |
-               ((uint32_t)key128[4*i+3]);
+    for (int i = 0; i < 8; i++) {
+        W[i] = ((uint32_t)key256[4*i]   << 24) |
+               ((uint32_t)key256[4*i+1] << 16) |
+               ((uint32_t)key256[4*i+2] << 8)  |
+               ((uint32_t)key256[4*i+3]);
     }
     
-    for (int i = NK; i < NB * (NR + 1); i++) {
+    for (int i = 8; i < NB * (NR + 1); i++) {
         temp = W[i - 1];
-        if (i % NK == 0) {
-            temp = SubWord(RotWord(temp)) ^ ((uint32_t)Rcon[i/NK] << 24);
+        if (i % 8 == 0) {
+            temp = SubWord(RotWord(temp)) ^ ((uint32_t)Rcon[i/8] << 24);
+        } else if (i % 8 == 4) {
+            temp = SubWord(temp);
         }
-        W[i] = W[i - NK] ^ temp;
+        W[i] = W[i - 8] ^ temp;
     }
     
     for (int r = 0; r <= NR; r++) {
@@ -113,6 +113,8 @@ void keygen_expand(const uint8_t *master_key, size_t key_len,
     
     volatile uint32_t *vp = W;
     for (int i = 0; i < NB * (NR + 1); i++) vp[i] = 0;
+    
+    cipher_secure_zero(key256, sizeof(key256));
 }
 
 void keygen_generate_iv(uint8_t iv[BLOCK_SIZE]) {

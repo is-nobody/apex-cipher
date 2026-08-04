@@ -77,7 +77,7 @@ Successfully decrypted: main.dec
 ```
 
 ## Security Features
-- **10 Rounds + Initial Whitening:** 11 unique round keys derived via HMAC from master key and unique salt per session.
+- **AES-256 (14 Rounds + Initial Whitening):** 15 unique round keys derived via HMAC-SHA256 from master key and unique salt per session. Keys shorter than 32 bytes are securely expanded to full 256-bit strength instead of being silently truncated.
 
 - **CBC Mode with PKCS#7:** Each block XORed with previous ciphertext for semantic security, with standard padding for files of any size.
 
@@ -86,6 +86,8 @@ Successfully decrypted: main.dec
 - **Random Salt & IV:** Unique 16-byte KDF salt and 16-byte initialization vector for each encryption operation.
 
 - **PBKDF2-HMAC-SHA256:** 100,000 iterations with unique salt for password-based key derivation.
+
+- **Key Length Enforcement:** Minimum 32-byte keys for full AES-256 security. Shorter keys trigger automatic HMAC-based expansion with user warning, preventing accidental use of weak keys. Maximum 64 bytes.
 
 - **Original Size Preservation:** File size stored in header and authenticated, preventing truncation attacks.
 

@@ -46,6 +46,12 @@ static void prepare_key(const char *key_str, uint8_t *key, size_t *key_len) {
             if (*key_len > 64) *key_len = 64;
             memcpy(key, key_str, *key_len);
         }
+        
+        if (*key_len < MIN_KEY_SIZE) {
+            fprintf(stderr, COLOR_RED "Warning: Key is only %zu bytes. Use at least %d bytes.\n" COLOR_RESET, *key_len, MIN_KEY_SIZE);
+            fprintf(stderr, COLOR_RED "Short keys will be expanded via HMAC, but this reduces entropy.\n" COLOR_RESET);
+        }
+        
         utils_show_key(key, *key_len);
     } else {
         keygen_random_key(key, DEFAULT_KEY_SIZE);

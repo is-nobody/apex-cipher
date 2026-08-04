@@ -16,6 +16,9 @@
 #include "hash.h"
 #include "kdf.h"
 
+#define COLOR_RED "\033[1;31m"
+#define COLOR_RESET "\033[0m"
+
 #define REPL_MAX_CIPHERTEXT 65536
 
 static uint8_t current_key[64];
@@ -231,6 +234,7 @@ static int repl_decrypt(const uint8_t *ciphertext, size_t ciphertext_len,
 static void init_key(void) {
     if (!key_initialized) {
         crypto_get_default_key(current_key);
+        current_key_len = DEFAULT_KEY_SIZE;
         key_initialized = 1;
     }
 }
@@ -347,7 +351,7 @@ void repl_run(void) {
             
         } else if (choice == 3) {
             utils_show_key(current_key, current_key_len);
-            printf("New key (empty = keep current): ");
+            printf("New key (empty = keep current, min %d bytes recommended): ", MIN_KEY_SIZE);
             
             uint8_t new_key[65];
             size_t new_len = 0;
@@ -357,6 +361,11 @@ void repl_run(void) {
             }
             
             if (new_len > 0) {
+                if (new_len < MIN_KEY_SIZE) {
+                    printf(COLOR_RED "Warning: Key is only %zu bytes. "
+                        "For full security, use at least %d bytes.\n" COLOR_RESET,
+                        new_len, MIN_KEY_SIZE);
+                }
                 memcpy(current_key, new_key, new_len);
                 current_key_len = new_len;
                 printf("Updated! ");
