@@ -16,6 +16,25 @@
 #include <errno.h>
 #endif
 
+#define NK 4
+#define NR 10
+#define NB 4
+
+static const uint8_t Rcon[11] = {
+    0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36
+};
+
+static uint32_t SubWord(uint32_t word) {
+    return ((uint32_t)SBOX[(word >> 24) & 0xFF] << 24) |
+           ((uint32_t)SBOX[(word >> 16) & 0xFF] << 16) |
+           ((uint32_t)SBOX[(word >> 8) & 0xFF] << 8)  |
+           ((uint32_t)SBOX[word & 0xFF]);
+}
+
+static uint32_t RotWord(uint32_t word) {
+    return (word << 8) | (word >> 24);
+}
+
 static int secure_random(uint8_t *buf, size_t len) {
 #ifdef _WIN32
     NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
@@ -54,52 +73,46 @@ static int secure_random(uint8_t *buf, size_t len) {
 }
 
 void keygen_expand(const uint8_t *master_key, size_t key_len,
-                   const uint8_t *salt, size_t salt_len,
                    uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE]) {
     
-    uint8_t seed[32];
-    uint8_t round_material[32];
-    memset(seed, 0, sizeof(seed));
+    uint8_t key128[16];
+    if (key_len >= 16) {
+        memcpy(key128, master_key, 16);
+    } else {
+        memcpy(key128, master_key, key_len);
+        memset(key128 + key_len, 0, 16 - key_len);
+    }
     
-    memcpy(seed, salt, salt_len < 24 ? salt_len : 24);
+    uint32_t W[NB * (NR + 1)];
+    uint32_t temp;
     
-    if (salt_len < 24) {
-        for (size_t i = salt_len; i < 24; i++) {
-            seed[i] = (uint8_t)(0xA0 + i);
+    for (int i = 0; i < NK; i++) {
+        W[i] = ((uint32_t)key128[4*i]   << 24) |
+               ((uint32_t)key128[4*i+1] << 16) |
+               ((uint32_t)key128[4*i+2] << 8)  |
+               ((uint32_t)key128[4*i+3]);
+    }
+    
+    for (int i = NK; i < NB * (NR + 1); i++) {
+        temp = W[i - 1];
+        if (i % NK == 0) {
+            temp = SubWord(RotWord(temp)) ^ ((uint32_t)Rcon[i/NK] << 24);
+        }
+        W[i] = W[i - NK] ^ temp;
+    }
+    
+    for (int r = 0; r <= NR; r++) {
+        for (int j = 0; j < 4; j++) {
+            uint32_t word = W[r * 4 + j];
+            round_keys[r][j*4]   = (uint8_t)(word >> 24);
+            round_keys[r][j*4+1] = (uint8_t)(word >> 16);
+            round_keys[r][j*4+2] = (uint8_t)(word >> 8);
+            round_keys[r][j*4+3] = (uint8_t)(word);
         }
     }
     
-    seed[24] = 0x52; // 'R'
-    seed[25] = 0x4B; // 'K'
-    seed[26] = 0x45; // 'E'
-    seed[27] = 0x59; // 'Y'
-    seed[28] = (uint8_t)(key_len & 0xFF);
-    seed[29] = (uint8_t)((key_len >> 8) & 0xFF);
-    seed[30] = 0x00; // reserved
-    seed[31] = 0x00; // reserved
-    
-    for (int r = 0; r <= ROUNDS; r++) {
-        uint8_t round_seed[32];
-        memcpy(round_seed, seed, 32);
-        
-        uint8_t r_byte = (uint8_t)(r & 0xFF);
-        for (int i = 0; i < 32; i++) {
-            round_seed[i] ^= r_byte ^ (uint8_t)(i * 0x1B);
-        }
-        
-        hmac_compute(master_key, key_len, round_seed, 32, round_material);
-        
-        memcpy(round_keys[r], round_material, BLOCK_SIZE);
-        
-        for (int i = 0; i < BLOCK_SIZE; i++) {
-            round_keys[r][i] = HASH_SBOX[round_keys[r][i] ^ round_material[16 + (i % 16)]];
-        }
-    }
-    
-    volatile uint8_t *vp = seed;
-    for (size_t i = 0; i < sizeof(seed); i++) vp[i] = 0;
-    vp = round_material;
-    for (size_t i = 0; i < sizeof(round_material); i++) vp[i] = 0;
+    volatile uint32_t *vp = W;
+    for (int i = 0; i < NB * (NR + 1); i++) vp[i] = 0;
 }
 
 void keygen_generate_iv(uint8_t iv[BLOCK_SIZE]) {
