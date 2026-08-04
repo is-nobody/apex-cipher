@@ -8,6 +8,7 @@ set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native -funroll-loops")
 add_executable(apex-cipher
     main.c
     source/core/cipher.c
+    source/core/cipher_ops.c
     source/core/encrypt_decrypt.c
     source/core/round_ops.c
     source/core/sbox.c

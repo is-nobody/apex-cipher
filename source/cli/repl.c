@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include "repl.h"
 #include "cipher.h"
+#include "cipher_ops.h"
 #include "utils.h"
 #include "keygen.h"
 #include "crypto_context.h"
@@ -58,40 +59,20 @@ static int repl_encrypt(const uint8_t *plaintext, size_t plaintext_len,
     uint8_t salt[KDF_SALT_SIZE];
     keygen_generate_iv(salt);
     
-    uint8_t enc_salt[KDF_SALT_SIZE + 3];
-    memcpy(enc_salt, salt, KDF_SALT_SIZE);
-    enc_salt[KDF_SALT_SIZE] = 'E';
-    enc_salt[KDF_SALT_SIZE + 1] = 'N';
-    enc_salt[KDF_SALT_SIZE + 2] = 'C';
-    
-    uint8_t mac_salt[KDF_SALT_SIZE + 3];
-    memcpy(mac_salt, salt, KDF_SALT_SIZE);
-    mac_salt[KDF_SALT_SIZE] = 'M';
-    mac_salt[KDF_SALT_SIZE + 1] = 'A';
-    mac_salt[KDF_SALT_SIZE + 2] = 'C';
-    
-    uint8_t enc_key[KDF_DERIVED_KEY_SIZE];
-    uint8_t mac_key[KDF_DERIVED_KEY_SIZE];
-    
-    kdf_derive(key, key_len, enc_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS,
-               enc_key, KDF_DERIVED_KEY_SIZE);
-    kdf_derive(key, key_len, mac_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS,
-               mac_key, KDF_DERIVED_KEY_SIZE);
-    
-    uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE];
-    keygen_expand(enc_key, KDF_DERIVED_KEY_SIZE, round_keys);
-    
     uint8_t iv[BLOCK_SIZE];
     keygen_generate_iv(iv);
+    
+    CipherContext ctx;
+    if (cipher_ctx_init_encrypt(&ctx, key, key_len, salt) != 0) {
+        return -1;
+    }
     
     size_t padded_len = ((plaintext_len + BLOCK_SIZE - 1) / BLOCK_SIZE) * BLOCK_SIZE;
     if (padded_len == 0) padded_len = BLOCK_SIZE;
     
     size_t total_output = 8 + KDF_SALT_SIZE + BLOCK_SIZE + padded_len + HMAC_SIZE;
     if (total_output > REPL_MAX_CIPHERTEXT) {
-        secure_zero(enc_key, sizeof(enc_key));
-        secure_zero(mac_key, sizeof(mac_key));
-        secure_zero(round_keys, sizeof(round_keys));
+        cipher_ctx_cleanup(&ctx);
         return -1;
     }
     
@@ -99,15 +80,9 @@ static int repl_encrypt(const uint8_t *plaintext, size_t plaintext_len,
     size_t offset = 0;
     
     uint64_t orig_size = (uint64_t)plaintext_len;
-    output[0] = (uint8_t)(orig_size >> 56);
-    output[1] = (uint8_t)(orig_size >> 48);
-    output[2] = (uint8_t)(orig_size >> 40);
-    output[3] = (uint8_t)(orig_size >> 32);
-    output[4] = (uint8_t)(orig_size >> 24);
-    output[5] = (uint8_t)(orig_size >> 16);
-    output[6] = (uint8_t)(orig_size >> 8);
-    output[7] = (uint8_t)(orig_size);
-    offset += 8;
+    for (int i = 0; i < 8; i++) {
+        output[offset++] = (uint8_t)(orig_size >> (56 - i * 8));
+    }
     
     memcpy(output + offset, salt, KDF_SALT_SIZE);
     offset += KDF_SALT_SIZE;
@@ -115,26 +90,14 @@ static int repl_encrypt(const uint8_t *plaintext, size_t plaintext_len,
     memcpy(output + offset, iv, BLOCK_SIZE);
     offset += BLOCK_SIZE;
     
-    uint8_t hmac_key[HMAC_BLOCK_SIZE];
-    memset(hmac_key, 0, HMAC_BLOCK_SIZE);
-    memcpy(hmac_key, mac_key, KDF_DERIVED_KEY_SIZE);
-    
     HASH_CTX hmac_ctx;
-    hash_init(&hmac_ctx);
-    
-    uint8_t ipad[HMAC_BLOCK_SIZE];
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++) ipad[i] = hmac_key[i] ^ 0x36;
-    hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
-    hash_update(&hmac_ctx, output, 8);
-    hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
-    hash_update(&hmac_ctx, iv, BLOCK_SIZE);
+    cipher_hmac_init(&hmac_ctx, &ctx);
+    cipher_hmac_update_header(&hmac_ctx, output, salt, iv);
     
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
     
-    uint8_t padded_plain[BLOCK_SIZE * 2];
     size_t pos = 0;
-    
     while (pos < plaintext_len) {
         size_t chunk = plaintext_len - pos;
         if (chunk > BLOCK_SIZE) chunk = BLOCK_SIZE;
@@ -142,17 +105,13 @@ static int repl_encrypt(const uint8_t *plaintext, size_t plaintext_len,
         uint8_t block[BLOCK_SIZE];
         if (chunk < BLOCK_SIZE) {
             memcpy(block, plaintext + pos, chunk);
-            add_pkcs7_padding(block, chunk, BLOCK_SIZE);
+            cipher_add_pkcs7_padding(block, chunk, BLOCK_SIZE);
         } else {
             memcpy(block, plaintext + pos, BLOCK_SIZE);
         }
         
-        for (int i = 0; i < BLOCK_SIZE; i++) block[i] ^= prev[i];
-        encrypt_block(block, round_keys);
-        hash_update(&hmac_ctx, block, BLOCK_SIZE);
-        
+        cipher_cbc_encrypt_block(block, prev, &ctx, &hmac_ctx);
         memcpy(output + offset, block, BLOCK_SIZE);
-        memcpy(prev, block, BLOCK_SIZE);
         offset += BLOCK_SIZE;
         
         if (chunk < BLOCK_SIZE) break;
@@ -162,39 +121,20 @@ static int repl_encrypt(const uint8_t *plaintext, size_t plaintext_len,
     if (plaintext_len % BLOCK_SIZE == 0) {
         uint8_t pad_block[BLOCK_SIZE];
         memset(pad_block, BLOCK_SIZE, BLOCK_SIZE);
-        
-        for (int i = 0; i < BLOCK_SIZE; i++) pad_block[i] ^= prev[i];
-        encrypt_block(pad_block, round_keys);
-        hash_update(&hmac_ctx, pad_block, BLOCK_SIZE);
-        
+        cipher_cbc_encrypt_block(pad_block, prev, &ctx, &hmac_ctx);
         memcpy(output + offset, pad_block, BLOCK_SIZE);
-        memcpy(prev, pad_block, BLOCK_SIZE);
         offset += BLOCK_SIZE;
     }
     
-    uint8_t inner_hash[HASH_DIGEST_SIZE];
-    hash_final(&hmac_ctx, inner_hash);
-    
-    HASH_CTX opad_ctx;
-    hash_init(&opad_ctx);
-    uint8_t opad[HMAC_BLOCK_SIZE];
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++) opad[i] = hmac_key[i] ^ 0x5c;
-    hash_update(&opad_ctx, opad, HMAC_BLOCK_SIZE);
-    hash_update(&opad_ctx, inner_hash, HASH_DIGEST_SIZE);
-    
     uint8_t mac[HMAC_SIZE];
-    hash_final(&opad_ctx, mac);
+    cipher_hmac_final(&hmac_ctx, &ctx, mac);
     memcpy(output + offset, mac, HMAC_SIZE);
     offset += HMAC_SIZE;
     
     *ciphertext_len = offset;
     
-    secure_zero(enc_key, sizeof(enc_key));
-    secure_zero(mac_key, sizeof(mac_key));
-    secure_zero(round_keys, sizeof(round_keys));
-    secure_zero(hmac_key, sizeof(hmac_key));
-    secure_zero(prev, sizeof(prev));
-    secure_zero(inner_hash, sizeof(inner_hash));
+    cipher_ctx_cleanup(&ctx);
+    cipher_secure_zero(prev, sizeof(prev));
     
     return 0;
 }
@@ -207,14 +147,10 @@ static int repl_decrypt(const uint8_t *ciphertext, size_t ciphertext_len,
         return -1;
     }
     
-    uint64_t original_size = ((uint64_t)ciphertext[0] << 56) |
-                             ((uint64_t)ciphertext[1] << 48) |
-                             ((uint64_t)ciphertext[2] << 40) |
-                             ((uint64_t)ciphertext[3] << 32) |
-                             ((uint64_t)ciphertext[4] << 24) |
-                             ((uint64_t)ciphertext[5] << 16) |
-                             ((uint64_t)ciphertext[6] << 8)  |
-                             ((uint64_t)ciphertext[7]);
+    uint64_t original_size = 0;
+    for (int i = 0; i < 8; i++) {
+        original_size = (original_size << 8) | ciphertext[i];
+    }
     
     if (original_size > MAX_TEXT) return -1;
     
@@ -229,70 +165,32 @@ static int repl_decrypt(const uint8_t *ciphertext, size_t ciphertext_len,
     offset += BLOCK_SIZE;
     
     size_t encrypted_data_len = ciphertext_len - offset - HMAC_SIZE;
-    if (encrypted_data_len % BLOCK_SIZE != 0) return -1;
-    if (encrypted_data_len < BLOCK_SIZE) return -1;
+    if (encrypted_data_len % BLOCK_SIZE != 0 || encrypted_data_len < BLOCK_SIZE) {
+        return -1;
+    }
     
     uint8_t stored_mac[HMAC_SIZE];
     memcpy(stored_mac, ciphertext + ciphertext_len - HMAC_SIZE, HMAC_SIZE);
     
-    uint8_t enc_salt[KDF_SALT_SIZE + 3];
-    memcpy(enc_salt, salt, KDF_SALT_SIZE);
-    enc_salt[KDF_SALT_SIZE] = 'E';
-    enc_salt[KDF_SALT_SIZE + 1] = 'N';
-    enc_salt[KDF_SALT_SIZE + 2] = 'C';
-    
-    uint8_t mac_salt[KDF_SALT_SIZE + 3];
-    memcpy(mac_salt, salt, KDF_SALT_SIZE);
-    mac_salt[KDF_SALT_SIZE] = 'M';
-    mac_salt[KDF_SALT_SIZE + 1] = 'A';
-    mac_salt[KDF_SALT_SIZE + 2] = 'C';
-    
-    uint8_t enc_key[KDF_DERIVED_KEY_SIZE];
-    uint8_t mac_key[KDF_DERIVED_KEY_SIZE];
-    
-    kdf_derive(key, key_len, enc_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS,
-               enc_key, KDF_DERIVED_KEY_SIZE);
-    kdf_derive(key, key_len, mac_salt, KDF_SALT_SIZE + 3, KDF_ITERATIONS,
-               mac_key, KDF_DERIVED_KEY_SIZE);
-    
-    uint8_t hmac_key[HMAC_BLOCK_SIZE];
-    memset(hmac_key, 0, HMAC_BLOCK_SIZE);
-    memcpy(hmac_key, mac_key, KDF_DERIVED_KEY_SIZE);
+    CipherContext ctx;
+    if (cipher_ctx_init_decrypt(&ctx, key, key_len, salt) != 0) {
+        return -1;
+    }
     
     HASH_CTX hmac_ctx;
-    hash_init(&hmac_ctx);
-    
-    uint8_t ipad[HMAC_BLOCK_SIZE];
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++) ipad[i] = hmac_key[i] ^ 0x36;
-    hash_update(&hmac_ctx, ipad, HMAC_BLOCK_SIZE);
-    hash_update(&hmac_ctx, ciphertext, 8);
-    hash_update(&hmac_ctx, salt, KDF_SALT_SIZE);
-    hash_update(&hmac_ctx, iv, BLOCK_SIZE);
-    hash_update(&hmac_ctx, ciphertext + offset, encrypted_data_len);
-    
-    uint8_t inner_hash[HASH_DIGEST_SIZE];
-    hash_final(&hmac_ctx, inner_hash);
-    
-    HASH_CTX opad_ctx;
-    hash_init(&opad_ctx);
-    uint8_t opad[HMAC_BLOCK_SIZE];
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++) opad[i] = hmac_key[i] ^ 0x5c;
-    hash_update(&opad_ctx, opad, HMAC_BLOCK_SIZE);
-    hash_update(&opad_ctx, inner_hash, HASH_DIGEST_SIZE);
+    cipher_hmac_init(&hmac_ctx, &ctx);
+    cipher_hmac_update_header(&hmac_ctx, ciphertext, salt, iv);
+    cipher_hmac_update_data(&hmac_ctx, ciphertext + offset, encrypted_data_len);
     
     uint8_t computed_mac[HMAC_SIZE];
-    hash_final(&opad_ctx, computed_mac);
+    cipher_hmac_final(&hmac_ctx, &ctx, computed_mac);
     
-    if (ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
-        secure_zero(enc_key, sizeof(enc_key));
-        secure_zero(mac_key, sizeof(mac_key));
-        secure_zero(hmac_key, sizeof(hmac_key));
+    if (cipher_ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
+        cipher_ctx_cleanup(&ctx);
         return -2;
     }
     
     sbox_init();
-    uint8_t round_keys[ROUNDS + 1][BLOCK_SIZE];
-    keygen_expand(enc_key, KDF_DERIVED_KEY_SIZE, round_keys);
     
     uint8_t prev[BLOCK_SIZE];
     memcpy(prev, iv, BLOCK_SIZE);
@@ -300,32 +198,21 @@ static int repl_decrypt(const uint8_t *ciphertext, size_t ciphertext_len,
     size_t plain_offset = 0;
     
     for (size_t i = 0; i < encrypted_data_len - BLOCK_SIZE; i += BLOCK_SIZE) {
-        uint8_t temp[BLOCK_SIZE];
         uint8_t decrypted[BLOCK_SIZE];
-        
-        memcpy(temp, ciphertext + offset + i, BLOCK_SIZE);
-        decrypt_block(temp, round_keys);
-        for (int j = 0; j < BLOCK_SIZE; j++) decrypted[j] = temp[j] ^ prev[j];
-        memcpy(prev, ciphertext + offset + i, BLOCK_SIZE);
+        cipher_cbc_decrypt_block(ciphertext + offset + i, decrypted, prev, &ctx);
         
         memcpy(plaintext + plain_offset, decrypted, BLOCK_SIZE);
         plain_offset += BLOCK_SIZE;
     }
     
     size_t last_block_idx = encrypted_data_len - BLOCK_SIZE;
-    uint8_t last_encrypted[BLOCK_SIZE];
     uint8_t last_decrypted[BLOCK_SIZE];
-    
-    memcpy(last_encrypted, ciphertext + offset + last_block_idx, BLOCK_SIZE);
-    decrypt_block(last_encrypted, round_keys);
-    for (int j = 0; j < BLOCK_SIZE; j++) last_decrypted[j] = last_encrypted[j] ^ prev[j];
+    cipher_cbc_decrypt_block(ciphertext + offset + last_block_idx, last_decrypted, prev, &ctx);
     
     size_t unpadded_len;
-    if (remove_pkcs7_padding(last_decrypted, BLOCK_SIZE, &unpadded_len) != 0) {
-        secure_zero(enc_key, sizeof(enc_key));
-        secure_zero(mac_key, sizeof(mac_key));
-        secure_zero(round_keys, sizeof(round_keys));
-        secure_zero(hmac_key, sizeof(hmac_key));
+    if (cipher_remove_pkcs7_padding(last_decrypted, BLOCK_SIZE, &unpadded_len) != 0) {
+        cipher_ctx_cleanup(&ctx);
+        cipher_secure_zero(prev, sizeof(prev));
         return -2;
     }
     
@@ -336,15 +223,10 @@ static int repl_decrypt(const uint8_t *ciphertext, size_t ciphertext_len,
     
     *plaintext_len = plain_offset;
     
-    secure_zero(enc_key, sizeof(enc_key));
-    secure_zero(mac_key, sizeof(mac_key));
-    secure_zero(round_keys, sizeof(round_keys));
-    secure_zero(hmac_key, sizeof(hmac_key));
-    secure_zero(prev, sizeof(prev));
-    secure_zero(last_encrypted, sizeof(last_encrypted));
-    secure_zero(last_decrypted, sizeof(last_decrypted));
-    secure_zero(inner_hash, sizeof(inner_hash));
-    secure_zero(computed_mac, sizeof(computed_mac));
+    cipher_ctx_cleanup(&ctx);
+    cipher_secure_zero(prev, sizeof(prev));
+    cipher_secure_zero(last_decrypted, sizeof(last_decrypted));
+    cipher_secure_zero(computed_mac, sizeof(computed_mac));
     
     return 0;
 }

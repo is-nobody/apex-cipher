@@ -2,10 +2,14 @@
 #include "hmac.h"
 #include <string.h>
 
-void kdf_derive(const uint8_t *password, size_t password_len,
+int kdf_derive(const uint8_t *password, size_t password_len,
                 const uint8_t *salt, size_t salt_len,
                 uint32_t iterations,
                 uint8_t *derived_key, size_t key_len) {
+    
+    if (!password || !salt || !derived_key || key_len == 0) {
+        return -1;
+    }
     
     uint8_t block[HMAC_SIZE];
     uint8_t u[HMAC_SIZE];
@@ -38,4 +42,6 @@ void kdf_derive(const uint8_t *password, size_t password_len,
                           : HMAC_SIZE;
         memcpy(derived_key + (block_num - 1) * HMAC_SIZE, block, copy_len);
     }
+    
+    return 0;
 }
