@@ -1,4 +1,5 @@
 // source/cli/args.c
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +14,9 @@
 #define COLOR_CYAN "\033[1;36m"
 #define COLOR_RESET "\033[0m"
 
+// checks if a string consists entirely of hexadecimal digits (0-9, a-f, A-F).
+// used to detect whether a user-provided key string is a hex-encoded byte sequence
+// or a raw text password — they require different parsing strategies.
 static int is_hex_string(const char *str) {
     if (!str || !*str) return 0;
     for (size_t i = 0; str[i]; i++) {
@@ -21,9 +25,12 @@ static int is_hex_string(const char *str) {
     return 1;
 }
 
+// converts a hex string (e.g., "6d796b6579") into raw bytes.
+// called when the user provides a hex-encoded key instead of a text password.
+// pairs of hex characters are parsed into single byte values.
 static void hex_to_bytes(const char *hex, uint8_t *bytes, size_t *len) {
     size_t hex_len = strlen(hex);
-    *len = hex_len / 2;
+    *len = hex_len / 2;  // two hex chars per byte
     for (size_t i = 0; i < *len; i++) {
         unsigned int byte;
         sscanf(hex + i * 2, "%2x", &byte);
@@ -31,22 +38,38 @@ static void hex_to_bytes(const char *hex, uint8_t *bytes, size_t *len) {
     }
 }
 
+// displays a progress indicator during file encryption/decryption.
+// overwrites the current line with carriage return (\r) for a smooth updating display.
+// this is called by the cipher engine as it processes chunks of data.
 void show_progress(size_t current, size_t total) {
     float percent = (total > 0) ? (float)current / total * 100.0f : 0.0f;
     printf("\r" COLOR_CYAN "Progress: %.1f%% (%zu / %zu bytes)" COLOR_RESET, percent, current, total);
-    fflush(stdout);
+    fflush(stdout);  // flush immediately so user sees real-time updates
 }
 
+// prepares a key from the user-provided string (or generates a random one if NULL).
+// handles three cases:
+//   1. NULL key_str → generate a fresh random 32-byte key
+//   2. hex string (even length, all hex chars) → parse as raw bytes
+//   3. regular string → treat as password, use bytes directly (up to 64)
+//
+// warns the user if the key is shorter than MIN_KEY_SIZE (32 bytes) since
+// short keys get expanded via hmac, which reduces effective entropy.
 static void prepare_key(const char *key_str, uint8_t *key, size_t *key_len) {
     if (key_str) {
+        // auto-detect hex-encoded keys: even length and all hex digits.
+        // this allows users to provide keys as both "mykey123" and "6d796b6579".
         if (strlen(key_str) % 2 == 0 && is_hex_string(key_str)) {
             hex_to_bytes(key_str, key, key_len);
         } else {
+            // treat as raw text password — copy bytes up to 64 char limit.
             *key_len = strlen(key_str);
-            if (*key_len > 64) *key_len = 64;
+            if (*key_len > 64) *key_len = 64;  // truncate excessively long keys
             memcpy(key, key_str, *key_len);
         }
         
+        // warn about short keys: less than 32 bytes means the key will be
+        // expanded via hmac rather than used directly for aes-256.
         if (*key_len < MIN_KEY_SIZE) {
             fprintf(stderr, COLOR_RED "Warning: Key is only %zu bytes. Use at least %d bytes.\n" COLOR_RESET, *key_len, MIN_KEY_SIZE);
             fprintf(stderr, COLOR_RED "Short keys will be expanded via HMAC, but this reduces entropy.\n" COLOR_RESET);
@@ -54,34 +77,53 @@ static void prepare_key(const char *key_str, uint8_t *key, size_t *key_len) {
         
         utils_show_key(key, *key_len);
     } else {
+        // no key provided — generate a random 32-byte key for one-time use.
         keygen_random_key(key, DEFAULT_KEY_SIZE);
         *key_len = DEFAULT_KEY_SIZE;
         utils_show_key(key, *key_len);
     }
 }
 
+// constructs the output filename by replacing or appending an extension.
+// examples: "document.txt" + ".enc" → "document.enc"
+//           "archive" + ".enc"     → "archive.enc"
+//           "path/to/file.txt" + ".dec" → "path/to/file.dec"
+//
+// finds the last dot after the last path separator so filenames with
+// multiple dots (e.g., "archive.tar.gz") get the extension appended,
+// not replaced in the middle.
 static char* make_output_name(const char *filename, const char *ext) {
     char *output_name = (char*)malloc(1024);
     if (!output_name) return NULL;
     
+    // copy filename with room for null terminator.
     strncpy(output_name, filename, 1024 - 5);
     output_name[1024 - 5] = '\0';
     
+    // find the last dot that comes after the last path separator.
+    // this ensures we replace the file extension, not a directory name with a dot.
     char *dot = strrchr(output_name, '.');
     char *slash = strrchr(output_name, '/');
     
 #ifdef _WIN32
+    // on windows, also check for backslash as a path separator.
     char *bslash = strrchr(output_name, '\\');
     if (bslash && (!slash || bslash > slash)) slash = bslash;
 #endif
     
+    // if there's a dot after the last slash, strip the old extension.
     if (dot && (!slash || dot > slash)) *dot = '\0';
     
+    // append the new extension.
     strcat(output_name, ext);
     return output_name;
 }
 
+// handles the "encode" command: encrypts a file with an optional user-provided key.
+// if no key is given, a random key is generated and displayed to the user.
+// the encrypted output is written to <filename>.enc.
 int args_encrypt_file(const char *filename, const char *key_str) {
+    // verify the input file exists and is non-empty before doing any work.
     FILE *f = fopen(filename, "rb");
     if (!f) {
         printf(COLOR_RED "Error: Cannot open file '%s'\n" COLOR_RESET, filename);
@@ -97,16 +139,19 @@ int args_encrypt_file(const char *filename, const char *key_str) {
         return 1;
     }
     
+    // prepare the key: parse user input or generate random.
     uint8_t key[64];
     size_t key_len;
     prepare_key(key_str, key, &key_len);
     
+    // build output filename with .enc extension.
     char *output_name = make_output_name(filename, ".enc");
     if (!output_name) {
         printf(COLOR_RED "Error: Memory allocation failed\n" COLOR_RESET);
         return 1;
     }
     
+    // perform the actual encryption with progress reporting.
     int result = cipher_encrypt_file(filename, output_name, key, key_len, show_progress);
     
     if (result == 0) {
@@ -119,7 +164,11 @@ int args_encrypt_file(const char *filename, const char *key_str) {
     return result;
 }
 
+// handles the "decode" command: decrypts a file with a required key.
+// the key is mandatory for decryption — there's no random fallback.
+// the decrypted output is written to <filename>.dec.
 int args_decrypt_file(const char *filename, const char *key_str) {
+    // verify the encrypted file exists and is non-empty.
     FILE *f = fopen(filename, "rb");
     if (!f) {
         printf(COLOR_RED "Error: Cannot open file '%s'\n" COLOR_RESET, filename);
@@ -135,9 +184,11 @@ int args_decrypt_file(const char *filename, const char *key_str) {
         return 1;
     }
     
+    // parse the key (no random generation for decryption — key must match encryption).
     uint8_t key[64];
     size_t key_len;
     
+    // same auto-detection logic as prepare_key but without the random fallback.
     if (strlen(key_str) % 2 == 0 && is_hex_string(key_str)) {
         hex_to_bytes(key_str, key, &key_len);
     } else {
@@ -147,17 +198,20 @@ int args_decrypt_file(const char *filename, const char *key_str) {
     }
     utils_show_key(key, key_len);
     
+    // build output filename with .dec extension.
     char *output_name = make_output_name(filename, ".dec");
     if (!output_name) {
         printf(COLOR_RED "Error: Memory allocation failed\n" COLOR_RESET);
         return 1;
     }
     
+    // perform decryption with progress reporting.
     int result = cipher_decrypt_file(filename, output_name, key, key_len, show_progress);
     
     if (result == 0) {
         printf("\n" COLOR_GREEN "Successfully decrypted: %s\n" COLOR_RESET, output_name);
     } else if (result == -2) {
+        // -2 specifically means hmac verification failed — wrong key or tampered file.
         printf("\n" COLOR_RED "Wrong key or corrupted data (authentication failed)!\n" COLOR_RESET);
     } else {
         printf("\n" COLOR_RED "Error: Decryption failed (code: %d)\n" COLOR_RESET, result);
@@ -167,6 +221,8 @@ int args_decrypt_file(const char *filename, const char *key_str) {
     return result;
 }
 
+// prints usage instructions showing the available commands and their syntax.
+// called when the user provides no command or an unknown command.
 void print_usage(const char *program_name) {
     printf("Apex Cipher v26.08\n\n");
     printf("Usage:\n");

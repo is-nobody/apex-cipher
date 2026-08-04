@@ -1,5 +1,8 @@
+// source/core/sbox.c
 #include "sbox.h"
 
+// standard aes s-box: provides non-linear substitution resistant to linear and differential cryptanalysis.
+// each byte in the state is replaced with the corresponding value from this table.
 const uint8_t SBOX[256] = {
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5,
     0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -35,17 +38,32 @@ const uint8_t SBOX[256] = {
     0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
 };
 
+// inverse s-box: reverses the forward s-box substitution during decryption.
+// built by inverting the sbox mapping: inv_sbox[sbox[i]] = i.
 uint8_t INV_SBOX[256];
+
+// custom s-box variant used internally by the hash function for additional non-linearity.
+// derived from the main sbox with an index offset and xor constant to break symmetry.
 uint8_t HASH_SBOX[256];
+
+// guards against redundant re-initialization since sbox is read-only and inv/hash tables are static.
 static int initialized = 0;
 
 void sbox_init(void) {
+    // skip if already initialized — the tables are deterministic and never change.
     if (initialized) return;
+    
+    // build the inverse s-box by swapping index and value from the forward s-box.
     for (int i = 0; i < 256; i++) {
         INV_SBOX[SBOX[i]] = i;
     }
+    
+    // build a hash-specific s-box: shift index by 0x5a, substitute, then xor with 0xa5.
+    // the offset and constant prevent structural similarities with the main cipher s-box,
+    // making it harder to relate cipher operations to hash operations in cryptanalysis.
     for (int i = 0; i < 256; i++) {
         HASH_SBOX[i] = SBOX[(i + 0x5A) & 0xFF] ^ 0xA5;
     }
+    
     initialized = 1;
 }
