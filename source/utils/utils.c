@@ -25,5 +25,5 @@ void utils_show_key(const uint8_t *key, size_t key_len) {
     for (size_t i = 0; i < key_len; i++) {
         printf("%02x", key[i]);  // zero-padded two-digit hex for each byte
     }
-    printf(" (%zu bytes)\n", key_len);
+    printf(" (%llu bytes)\n", (unsigned long long)key_len);
 }

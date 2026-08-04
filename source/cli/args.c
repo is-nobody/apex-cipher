@@ -43,7 +43,7 @@ static void hex_to_bytes(const char *hex, uint8_t *bytes, size_t *len) {
 // this is called by the cipher engine as it processes chunks of data.
 void show_progress(size_t current, size_t total) {
     float percent = (total > 0) ? (float)current / total * 100.0f : 0.0f;
-    printf("\r" COLOR_CYAN "Progress: %.1f%% (%zu / %zu bytes)" COLOR_RESET, percent, current, total);
+    printf("\r" COLOR_CYAN "Progress: %.1f%% (%llu / %llu bytes)" COLOR_RESET, percent, (unsigned long long)current, (unsigned long long)total);
     fflush(stdout);  // flush immediately so user sees real-time updates
 }
 
@@ -71,7 +71,7 @@ static void prepare_key(const char *key_str, uint8_t *key, size_t *key_len) {
         // warn about short keys: less than 32 bytes means the key will be
         // expanded via hmac rather than used directly for aes-256.
         if (*key_len < MIN_KEY_SIZE) {
-            fprintf(stderr, COLOR_RED "Warning: Key is only %zu bytes. Use at least %d bytes.\n" COLOR_RESET, *key_len, MIN_KEY_SIZE);
+            fprintf(stderr, COLOR_RED "Warning: Key is only %llu bytes. Use at least %d bytes.\n" COLOR_RESET, (unsigned long long)*key_len, MIN_KEY_SIZE);
             fprintf(stderr, COLOR_RED "Short keys will be expanded via HMAC, but this reduces entropy.\n" COLOR_RESET);
         }
         

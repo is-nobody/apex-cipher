@@ -68,6 +68,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     )
 endif()
 
+# link bcrypt for bcryptgenrandom on windows
+if(WIN32)
+    target_link_libraries(apex-cipher PRIVATE bcrypt)
+endif()
+
 #[[
 # standard build command
 cmake -S . -B build/ -DCMAKE_BUILD_TYPE=Release
