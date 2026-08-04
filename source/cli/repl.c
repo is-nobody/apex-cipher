@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <ctype.h>
 #include "repl.h"
 #include "cipher.h"
 #include "utils.h"
@@ -95,6 +96,18 @@ void repl_run(void) {
             if (hex_len > 0 && hex[hex_len - 1] == '\n') { hex[hex_len - 1] = 0; hex_len--; }
             if (hex_len == 0) { printf("No data entered.\n\n"); continue; }
             
+            int valid_hex = 1;
+            for (size_t i = 0; i < hex_len; i++) {
+                if (!isxdigit((unsigned char)hex[i])) {
+                    valid_hex = 0;
+                    break;
+                }
+            }
+            if (!valid_hex || hex_len % 2 != 0) {
+                printf("Invalid hex. Use even length, 0-9 a-f A-F only.\n\n");
+                continue;
+            }
+
             char in_name[] = "/tmp/apex_repl_in.XXXXXX";
             char out_name[] = "/tmp/apex_repl_out.XXXXXX";
             int fd_in = mkstemp(in_name);
