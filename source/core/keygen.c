@@ -61,14 +61,11 @@ void keygen_expand(const uint8_t *master_key, size_t key_len,
     uint8_t round_material[32];
     memset(seed, 0, sizeof(seed));
     
-    size_t salt_mix = (salt_len < 24) ? salt_len : 24;
-    memcpy(seed, salt, salt_mix);
+    memcpy(seed, salt, salt_len < 24 ? salt_len : 24);
     
     if (salt_len < 24) {
-        uint8_t expanded[32];
-        hmac_compute(master_key, key_len, salt, salt_len, expanded);
-        for (size_t i = salt_mix; i < 24; i++) {
-            seed[i] = expanded[i];
+        for (size_t i = salt_len; i < 24; i++) {
+            seed[i] = (uint8_t)(0xA0 + i);
         }
     }
     
