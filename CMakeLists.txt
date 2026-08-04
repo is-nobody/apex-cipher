@@ -1,11 +1,13 @@
-cmake_minimum_required(VERSION 3.10)
-project(apex-cipher C)
+cmake_minimum_required(VERSION 3.13)
+project(Apex-Cipher VERSION 26.08 LANGUAGES C)
 
+# enables gnu extensions 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_FLAGS_RELEASE "-O3 -march=native -funroll-loops")
+set(CMAKE_C_EXTENSIONS ON)
 
-add_executable(apex-cipher
+# all source files grouped by module
+set(SOURCES
     main.c
     source/core/cipher.c
     source/core/cipher_ops.c
@@ -21,12 +23,50 @@ add_executable(apex-cipher
     source/utils/utils.c
 )
 
+add_executable(apex-cipher ${SOURCES})
+
+# header search paths for include from any directory
 target_include_directories(apex-cipher PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/source/core
     ${CMAKE_CURRENT_SOURCE_DIR}/source/cli
     ${CMAKE_CURRENT_SOURCE_DIR}/source/utils
 )
+
+# baseline warnings and posix compatibility
+set(BASE_FLAGS 
+    -Wall -Wextra
+    -D_DEFAULT_SOURCE
+)
+
+# performance flags for gcc/clang (linux/macos/mingw)
+set(HIGH_PERF_FLAGS
+    -O3
+    -flto
+)
+
+# native cpu flags only when NOT cross-compiling
+if(NOT CMAKE_CROSSCOMPILING)
+    list(APPEND HIGH_PERF_FLAGS -march=native -mtune=native)
+endif()
+
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(apex-cipher PRIVATE ${BASE_FLAGS} ${HIGH_PERF_FLAGS})
+    
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        target_link_options(apex-cipher PRIVATE -flto)
+    endif()
+else()
+    target_compile_options(apex-cipher PRIVATE ${BASE_FLAGS} -O2)
+endif()
+
+# strips debug symbols in release builds
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_custom_command(TARGET apex-cipher POST_BUILD
+        COMMAND ${CMAKE_STRIP} $<TARGET_FILE:apex-cipher>
+        COMMENT "Stripping debug symbols..."
+    )
+endif()
 
 #[[
 # standard build command
