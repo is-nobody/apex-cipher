@@ -55,23 +55,29 @@ Successfully decrypted: main.dec
 ```
 
 ## Security Features
-- **AES-256 (14 Rounds + Initial Whitening):** 15 unique round keys derived via HMAC-SHA256 from master key and unique salt per session. Keys shorter than 32 bytes are securely expanded to full 256-bit strength instead of being silently truncated.
+- **Mathematical Foundation from AES-256:** 14 rounds of substitution, shifting, mixing, and key addition with 15 unique round keys per session.
 
-- **CBC Mode with PKCS#7:** Each block XORed with previous ciphertext for semantic security, with standard padding for files of any size.
+- **CBC Mode with PKCS#7:** Semantic security — identical plaintext blocks produce different ciphertexts.
 
-- **Encrypt-then-MAC:** HMAC-SHA256 computed over ciphertext (including original file size) to verify integrity before decryption.
+- **Encrypt-then-MAC (HMAC-SHA256):** Authenticity verified *before* decryption — eliminates padding oracle attacks entirely.
 
-- **Random Salt & IV:** Unique 16-byte KDF salt and 16-byte initialization vector for each encryption operation.
+- **Random Salt & IV:** 16 bytes each, unique per encryption — prevents ciphertext reuse and rainbow tables.
 
-- **PBKDF2-HMAC-SHA256:** 100,000 iterations with unique salt for password-based key derivation.
+- **PBKDF2-HMAC-SHA256:** 100,000 iterations with unique salt for key derivation from passwords.
 
-- **Key Length Enforcement:** Minimum 32-byte keys for full AES-256 security. Shorter keys trigger automatic HMAC-based expansion with user warning, preventing accidental use of weak keys. Maximum 64 bytes.
+- **Key Length Enforcement:** 32–64 bytes. Shorter keys are cryptographically expanded, never silently truncated.
 
-- **Original Size Preservation:** File size stored in header and authenticated, preventing truncation attacks.
-
-- **Constant-Time Comparison:** `ct_memcmp` prevents timing attacks on MAC verification.
-
-- **Secure Zeroization:** Sensitive keys, round keys, and intermediate state explicitly wiped after use.
+| Attack | Mitigation |
+|--------|------------|
+| Padding Oracle (Vaudenay, POODLE, Lucky13) | Encrypt-then-MAC — verification before decryption |
+| Timing Side-Channel | Constant-time `ct_memcmp` — full 32-byte scan, no early exit |
+| Error Code Oracle | Uniform `-1` return for all failure modes |
+| Truncation | Original file size in authenticated header |
+| Ciphertext Manipulation | HMAC-SHA256 over header + entire ciphertext |
+| Brute-Force / Dictionary | PBKDF2 with 100,000 iterations + 128-bit random salt |
+| Key Reuse (ENC vs MAC) | Domain-separated derivation ("ENC" / "MAC" tags) |
+| Weak User Key (<32 bytes) | HMAC-based expansion to full 256-bit strength |
+| Memory Dump / Cold Boot | Secure zeroization via `volatile` pointers, keys wiped after use |
 
 ## Getting Help
 See [Issues](https://github.com/is-nobody/apex-cipher/issues) for bug reports and feature requests.
