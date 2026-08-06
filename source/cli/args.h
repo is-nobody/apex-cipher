@@ -12,7 +12,8 @@ int args_encrypt_file(const char *filename, const char *key_str);
 // handles the "decode" command: decrypts a file with a required key.
 // filename: path to the encrypted file to decrypt.
 // key_str: the key used during encryption (text or hex, must match).
-// returns 0 on success, 1 on error, 2 on authentication failure.
+// returns 0 on success, non-zero on error.
+// all failure modes return the same error code to prevent oracle attacks.
 int args_decrypt_file(const char *filename, const char *key_str);
 
 // prints command-line usage instructions to stdout.

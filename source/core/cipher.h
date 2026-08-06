@@ -36,8 +36,8 @@ int cipher_encrypt_file(const char *input_path,
 // key_len: length of the key in bytes (must match encryption).
 // progress: optional callback for progress reporting.
 //
-// returns 0 on success, -1 on i/o or memory error, -2 on authentication failure
-// (wrong key or corrupted/tampered file).
+// returns 0 on success, -1 on any failure (wrong key, corrupted data, i/o error, etc.).
+// all failures produce the same return code to prevent oracle attacks.
 int cipher_decrypt_file(const char *input_path,
                         const char *output_path,
                         const uint8_t *key, size_t key_len,

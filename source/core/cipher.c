@@ -245,8 +245,9 @@ int cipher_encrypt_file(const char *input_path,
 }
 
 // decrypts a file encrypted by cipher_encrypt_file.
-// performs hmac verification before decryption (encrypt-then-mac):
-// if the mac doesn't match, decryption is aborted with error code -2.
+// performs hmac verification before decryption (encrypt-then-mac).
+// all failure modes return -1 — no distinction between wrong key, corruption,
+// or i/o errors. this prevents attackers from using return codes as oracles.
 int cipher_decrypt_file(const char *input_path,
                         const char *output_path,
                         const uint8_t *key, size_t key_len,
@@ -357,12 +358,12 @@ int cipher_decrypt_file(const char *input_path,
     free(hmac_data);
     
     // verify mac before any decryption — prevents padding oracle and chosen-ciphertext attacks.
-    // returns -2 (authentication failed) to distinguish from other errors.
+    // returns -1 (same as all other errors) to prevent distinguishing auth failure from other errors.
     if (cipher_ct_memcmp(computed_mac, stored_mac, HMAC_SIZE) != 0) {
         cipher_ctx_cleanup(&ctx);
         free(chunk_buf);
         fclose(input);
-        return -2;
+        return -1;
     }
     
     // mac verified — begin decryption.
@@ -423,11 +424,12 @@ int cipher_decrypt_file(const char *input_path,
         size_t unpadded_len;
         if (cipher_remove_pkcs7_padding(last_decrypted, BLOCK_SIZE, &unpadded_len) != 0) {
             // padding validation failed — likely corrupted or tampered data.
+            // return -1 same as all other errors to prevent oracle.
             cipher_ctx_cleanup(&ctx);
             free(chunk_buf);
             fclose(input);
             fclose(output);
-            return -2;
+            return -1;
         }
         
         // write only the actual data bytes (without padding) to match original file size.

@@ -157,7 +157,7 @@ int args_encrypt_file(const char *filename, const char *key_str) {
     if (result == 0) {
         printf("\n" COLOR_GREEN "Successfully encrypted: %s\n" COLOR_RESET, output_name);
     } else {
-        printf("\n" COLOR_RED "Error: Encryption failed (code: %d)\n" COLOR_RESET, result);
+        printf("\n" COLOR_RED "Error: Encryption failed\n" COLOR_RESET);
     }
     
     free(output_name);
@@ -167,6 +167,7 @@ int args_encrypt_file(const char *filename, const char *key_str) {
 // handles the "decode" command: decrypts a file with a required key.
 // the key is mandatory for decryption — there's no random fallback.
 // the decrypted output is written to <filename>.dec.
+// all failures produce the same return code to prevent oracle attacks.
 int args_decrypt_file(const char *filename, const char *key_str) {
     // verify the encrypted file exists and is non-empty.
     FILE *f = fopen(filename, "rb");
@@ -206,15 +207,14 @@ int args_decrypt_file(const char *filename, const char *key_str) {
     }
     
     // perform decryption with progress reporting.
+    // cipher_decrypt_file returns 0 on success, -1 on any failure (all failures
+    // produce the same return code — no oracle leakage).
     int result = cipher_decrypt_file(filename, output_name, key, key_len, show_progress);
     
     if (result == 0) {
         printf("\n" COLOR_GREEN "Successfully decrypted: %s\n" COLOR_RESET, output_name);
-    } else if (result == -2) {
-        // -2 specifically means hmac verification failed — wrong key or tampered file.
-        printf("\n" COLOR_RED "Wrong key or corrupted data (authentication failed)!\n" COLOR_RESET);
     } else {
-        printf("\n" COLOR_RED "Error: Decryption failed (code: %d)\n" COLOR_RESET, result);
+        printf("\n" COLOR_RED "Error: Decryption failed\n" COLOR_RESET);
     }
     
     free(output_name);
