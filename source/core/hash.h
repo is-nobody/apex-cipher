@@ -1,4 +1,8 @@
 // source/core/hash.h
+// Implementation of Hash for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef HASH_H
 #define HASH_H
 

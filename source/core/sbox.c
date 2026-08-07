@@ -1,4 +1,8 @@
 // source/core/sbox.c
+// Implementation of Sbox for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #include "sbox.h"
 
 // standard aes s-box: provides non-linear substitution resistant to linear and differential cryptanalysis.

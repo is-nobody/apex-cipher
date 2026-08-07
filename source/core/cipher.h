@@ -1,4 +1,8 @@
 // source/core/cipher.h
+// Implementation of Cipher for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef CIPHER_H
 #define CIPHER_H
 

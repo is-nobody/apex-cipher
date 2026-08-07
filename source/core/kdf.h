@@ -1,4 +1,8 @@
 // source/core/kdf.h
+// Implementation of KDF for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef KDF_H
 #define KDF_H
 

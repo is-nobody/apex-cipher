@@ -1,4 +1,8 @@
 // source/core/keygen.h
+// Implementation of Key Generation for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef KEYGEN_H
 #define KEYGEN_H
 

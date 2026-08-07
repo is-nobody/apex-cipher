@@ -1,4 +1,8 @@
 // source/core/encrypt_decrypt.c
+// Implementation of Encrypt/Decrypt for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #include "encrypt_decrypt.h"
 #include "round_ops.h"
 

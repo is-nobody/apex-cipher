@@ -1,4 +1,8 @@
 // source/cli/args.h
+// Implementation of CLI Arguments for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef ARGS_H
 #define ARGS_H
 

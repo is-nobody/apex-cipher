@@ -1,4 +1,8 @@
 // source/core/encrypt_decrypt.h
+// Implementation of Encrypt/Decrypt for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef ENCRYPT_DECRYPT_H
 #define ENCRYPT_DECRYPT_H
 

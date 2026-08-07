@@ -1,4 +1,8 @@
 // source/core/hash.c
+// Implementation of Hash for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #include "hash.h"
 #include "sbox.h"
 #include <string.h>

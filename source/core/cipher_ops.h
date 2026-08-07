@@ -1,4 +1,8 @@
 // source/core/cipher_ops.h
+// Implementation of Cipher Operations for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef CIPHER_OPS_H
 #define CIPHER_OPS_H
 

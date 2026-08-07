@@ -1,4 +1,8 @@
 // source/core/cipher_ops.c
+// Implementation of Cipher Operations for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #include "cipher_ops.h"
 #include "encrypt_decrypt.h"
 #include <string.h>

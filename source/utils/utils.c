@@ -1,4 +1,8 @@
 // source/utils/utils.c
+// Implementation of Utils for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>

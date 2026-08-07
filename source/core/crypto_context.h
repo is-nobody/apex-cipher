@@ -1,4 +1,8 @@
 // source/core/crypto_context.h
+// Implementation of Crypto Context for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef CRYPTO_CONTEXT_H
 #define CRYPTO_CONTEXT_H
 

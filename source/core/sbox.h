@@ -1,4 +1,8 @@
 // source/core/sbox.h
+// Implementation of Sbox for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef SBOX_H
 #define SBOX_H
 

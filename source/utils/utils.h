@@ -1,4 +1,8 @@
 // source/utils/utils.h
+// Implementation of Utils for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef UTILS_H
 #define UTILS_H
 

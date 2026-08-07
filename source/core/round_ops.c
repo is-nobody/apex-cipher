@@ -1,4 +1,8 @@
 // source/core/round_ops.c
+// Implementation of Rounds for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #include <string.h>
 #include "round_ops.h"
 

@@ -1,3 +1,8 @@
+# CMakeLists.txt
+# Implementation of CMakeLists for Apex Cipher
+# https://github.com/is-nobody/apex-cipher
+# MIT license
+
 cmake_minimum_required(VERSION 3.13)
 project(Apex-Cipher VERSION 26.08 LANGUAGES C)
 

@@ -1,4 +1,8 @@
 // source/core/hmac.h
+// Implementation of HMAC for Apex Cipher
+// https://github.com/is-nobody/apex-cipher
+// MIT license
+
 #ifndef HMAC_H
 #define HMAC_H
 
